@@ -896,46 +896,29 @@ def api_aircraft_info(aircraft_id):
     return jsonify({"available": True, "aircraft": record})
 
 AIRFOIL_AIRCRAFT_MAP = {
-    # Source: David Lednicer, The Incomplete Guide to Airfoil Usage,
-    # hosted by the UIUC Airfoil Data Site. Root/tip are listed separately.
-    "northrop-grumman-rq-4-global-hawk": [
-        {"name": "LRN 1015 (wing section)", "file": "lrn1015.dat",
-         "evidence": "The UIUC airfoil directory explicitly identifies LRN 1015 as the airfoil used on the Northrop Grumman RQ-4 Global Hawk.",
-         "url": "https://m-selig.ae.illinois.edu/ads/coord/lrn1015.dat"}
+    # David Lednicer, The Incomplete Guide to Airfoil Usage (UIUC-hosted).
+    "boeing-747-100": [
+        {"name":"Wing root: BAC 463 to BAC 468","file":"","evidence":"UIUC guide lists BAC 463–468 for the Boeing 747-100 wing root.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name":"Wing tip: BAC 469 to BAC 474","file":"","evidence":"UIUC guide lists BAC 469–474 for the Boeing 747-100 wing tip.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
     ],
-    "fairchild-republic-a-10c-thunderbolt-ii": [
-        {"name": "NACA 6716 — wing root", "file": "naca6716.dat",
-         "evidence": "The UIUC aircraft-to-airfoil guide lists NACA 6716 at the Fairchild A-10 Thunderbolt II wing root.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
-        {"name": "NACA 6713 — wing tip", "file": "naca6713.dat",
-         "evidence": "The UIUC aircraft-to-airfoil guide lists NACA 6713 at the Fairchild A-10 Thunderbolt II wing tip.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    "boeing-747-200b": [
+        {"name":"Wing root: BAC 463 to BAC 468","file":"","evidence":"UIUC guide lists BAC 463–468 for the Boeing 747-200 wing root.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name":"Wing tip: BAC 469 to BAC 474","file":"","evidence":"UIUC guide lists BAC 469–474 for the Boeing 747-200 wing tip.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
     ],
-    "lockheed-martin-f-16c-fighting-falcon": [
-        {"name": "NACA 64A204 — root and tip (listed)", "file": "",
-         "evidence": "The UIUC guide lists NACA 64A204 for the General Dynamics / Lockheed Martin F-16 Fighting Falcon at both root and tip.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
-    ],
-    "lockheed-martin-f-35a-lightning-ii": [
-        {"name": "NACA 65A modified (designation as listed)", "file": "",
-         "evidence": "The UIUC guide lists NACA 65A modified for the Lockheed Martin F-35 Lightning II; the source does not specify separate root and tip variants in that row.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    "boeing-747-300": [
+        {"name":"Wing root: BAC 463 to BAC 468","file":"","evidence":"UIUC guide lists BAC 463–468 for the Boeing 747-300 wing root.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name":"Wing tip: BAC 469 to BAC 474","file":"","evidence":"UIUC guide lists BAC 469–474 for the Boeing 747-300 wing tip.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
     ],
     "boeing-747-400": [
-        {"name": "BAC 463–468 — wing root family", "file": "",
-         "evidence": "The UIUC guide lists BAC 463 through BAC 468 for the Boeing 747-400 wing root. These are a family of custom Boeing sections, not a single NACA profile.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
-        {"name": "BAC 469–474 — wing tip family", "file": "",
-         "evidence": "The UIUC guide lists BAC 469 through BAC 474 for the Boeing 747-400 wing tip.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+        {"name":"Wing root: BAC 463 to BAC 468","file":"","evidence":"UIUC guide lists BAC 463–468 for the Boeing 747-400 wing root.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name":"Wing tip: BAC 469 to BAC 474","file":"","evidence":"UIUC guide lists BAC 469–474 for the Boeing 747-400 wing tip.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
     ],
-    "airbus-a320": [
-        {"name": "Wing-root thickness ratio: 15%", "file": "",
-         "evidence": "The UIUC guide gives a 15% root thickness ratio and 11% tip thickness ratio for the Airbus A320. It does not publish an exact airfoil designation in this entry.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
-        {"name": "Wing-tip thickness ratio: 11%", "file": "",
-         "evidence": "The UIUC guide gives an 11% tip thickness ratio for the Airbus A320; this is a thickness ratio, not an airfoil designation.",
-         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    "airbus-a380-800": [
+        {"name":"Wing-root thickness ratio: 13%","file":"","evidence":"UIUC guide lists a 13% thickness ratio at the Airbus A380 wing root; it does not give an exact profile designation in this entry.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name":"Wing-tip thickness ratio: 9.1%","file":"","evidence":"UIUC guide lists a 9.1% thickness ratio at the Airbus A380 wing tip; this is a thickness ratio, not an airfoil designation.","url":"https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ],
+    "northrop-grumman-rq-4-global-hawk": [
+        {"name":"LRN 1015 (wing section)","file":"lrn1015.dat","evidence":"UIUC directory identifies LRN 1015 as the airfoil used on the Northrop Grumman RQ-4 Global Hawk.","url":"https://m-selig.ae.illinois.edu/ads/coord/lrn1015.dat"}
     ]
 }
 
@@ -958,6 +941,18 @@ def api_airfoil_lookup():
             "message": "This aircraft is not available in the current Aeroscraping aircraft dataset. Choose a listed aircraft or search an airfoil designation directly."
         }), 404
     profiles = AIRFOIL_AIRCRAFT_MAP.get(record["id"], [])
+    if not profiles and record["id"].startswith("boeing-747-"):
+        if record["id"] in {"boeing-747-8", "boeing-747-8-intercontinental", "boeing-747-8-freighter"}:
+            profiles = [{
+                "name": "747-8 redesigned wing airfoil system",
+                "file": "",
+                "evidence": "Boeing states that the 747-8 has a new wing design including new airfoils. The source does not provide individual root/tip designations here, so Aeroscraping does not assume the 747 Classics BAC sections apply.",
+                "url": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/747-8_Rev_E.pdf"
+            }]
+        else:
+            profiles = AIRFOIL_AIRCRAFT_MAP.get("boeing-747-400", [])
+    if not profiles and record["id"].startswith("airbus-a380-"):
+        profiles = AIRFOIL_AIRCRAFT_MAP.get("airbus-a380-800", [])
     return jsonify({
         "available": True,
         "aircraft": record["name"],

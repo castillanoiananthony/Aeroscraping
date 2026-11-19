@@ -7,13 +7,13 @@
   <meta name="description" content="Aeroscraping — aerospace aircraft research, drawings, airfoil references and aircraft data.">
   <title>Aeroscraping</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='assets/plane.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261119-3') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261119-4') }}">
 </head>
 <body>
 <div class="app-shell" id="appShell">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-topline">
-      <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="true" aria-label="Collapse sidebar">☰</button>
+      <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-expanded="true" aria-label="Collapse sidebar">←</button>
       <span class="sidebar-heading">Research workspace</span>
     </div>
 
@@ -28,23 +28,6 @@
         <a href="mailto:castillano.iananthony.h@gmail.com">castillano.iananthony.h@gmail.com</a>
       </section>
     </div>
-
-    <section class="early-note">
-      <div class="note-kicker">Development notice</div>
-      <h2>This website is in its early stage.</h2>
-      <p>Aeroscraping is actively being developed. Search coverage, aircraft records, airfoil mappings, and drawing availability are still expanding. Always verify technical values against primary sources before using them in engineering work.</p>
-    </section>
-
-    <section class="tips-panel">
-      <h2>Search efficiently</h2>
-      <ul>
-        <li>Use the full aircraft name or model, such as <b>Airbus A350-900</b>.</li>
-        <li>Use a variant when possible: <b>F-16C</b>, not just F-16.</li>
-        <li>For drawings, search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
-        <li>Try engineering terms such as <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> if you need a focused follow-up.</li>
-        <li>Check the source page, publication date, variant, and units before citing.</li>
-      </ul>
-    </section>
 
     <section class="settings">
       <h2>Search settings</h2>
@@ -66,6 +49,35 @@
         <option value="off">Off</option>
       </select>
     </section>
+
+    <section class="early-note">
+      <div class="note-kicker">Development notice</div>
+      <h2>This website is in its early stage.</h2>
+      <p>Aeroscraping is actively being developed. Search coverage, aircraft records, airfoil mappings, and drawing availability are still expanding. Always verify technical values against primary sources before using them in engineering work.</p>
+    </section>
+
+    <section class="tips-panel">
+      <h2>Search efficiently</h2>
+      <ul>
+        <li>Use the full aircraft name or model, such as <b>Airbus A350-900</b>.</li>
+        <li>Use a variant when possible: <b>F-16C</b>, not just F-16.</li>
+        <li>For drawings, search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
+        <li>Try engineering terms such as <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> if you need a focused follow-up.</li>
+        <li>Check the source page, publication date, variant, and units before citing.</li>
+      </ul>
+    </section>
+
+    <section class="tips-panel">
+      <h2>Search efficiently</h2>
+      <ul>
+        <li>Use the full aircraft name or model, such as <b>Airbus A350-900</b>.</li>
+        <li>Use a variant when possible: <b>F-16C</b>, not just F-16.</li>
+        <li>For drawings, search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
+        <li>Try engineering terms such as <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> if you need a focused follow-up.</li>
+        <li>Check the source page, publication date, variant, and units before citing.</li>
+      </ul>
+    </section>
+
     <div class="sidebar-note">Aeroscraping<br><span>Research the engineering behind flight.</span></div>
   </aside>
 
@@ -79,8 +91,12 @@
     <form id="searchForm" class="search-panel">
       <label for="query">Search one aircraft — Aeroscraping researches the report topics together</label>
       <div class="search-row">
-        <input id="query" name="query" type="search" list="aircraftSuggestions" placeholder="Choose or type an aircraft: Concorde, A-10, A350-900, J-20..." autocomplete="off" required>
-        <datalist id="aircraftSuggestions"></datalist>
+        <div class="search-input-wrap">
+          <input id="query" name="query" type="search" placeholder="Type an aircraft or choose from the list..." autocomplete="off" required>
+          <select id="aircraftSelect" aria-label="Choose an aircraft from the dataset">
+            <option value="">Browse aircraft dataset…</option>
+          </select>
+        </div>
         <button id="searchButton" type="submit">Search</button>
       </div>
       <div class="search-hint">One aircraft search expands into configuration, structure, propulsion, aerodynamics, controls, and avionics.</div>
@@ -110,6 +126,6 @@
     <footer class="footer">Aeroscraping · Developed by Ian Anthony H. Castillano</footer>
   </main>
 </div>
-<script src="{{ url_for('static', filename='js/app.js', v='20261119-3') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js', v='20261119-4') }}"></script>
 </body>
 </html>

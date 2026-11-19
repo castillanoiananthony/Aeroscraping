@@ -6,7 +6,7 @@ $('sidebarToggle').addEventListener('click', () => {
   const collapsed = appShell.classList.toggle('sidebar-collapsed');
   $('sidebarToggle').setAttribute('aria-expanded', String(!collapsed));
   $('sidebarToggle').setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-  $('sidebarToggle').textContent = collapsed ? '☰' : '✕';
+  $('sidebarToggle').textContent = collapsed ? '→' : '←';
 });
 
 const profileToggle = $('profileToggle');
@@ -85,7 +85,24 @@ function imageCard(item,index) {
 }
 function fillPanel(id,items,kind){
   const panel=$(id);panel.replaceChildren();
-  if(!items||!items.length){panel.append(el('div','empty','No verified results were returned for this category. Try a more specific aircraft variant or inspect the source links in another category.'));return;}
+  if(!items||!items.length){
+    panel.append(el('div','empty','No verified results were returned for this category.'));
+    const box=el('section','recommended-sources');
+    box.append(el('h3','', 'Reliable sources to explore'));
+    box.append(el('p','', 'Try these primary or specialist aerospace references while Aeroscraping expands its indexed coverage.'));
+    const links=[
+      ['NASA Technical Reports Server (NTRS)','https://ntrs.nasa.gov/'],
+      ['NASA Image and Video Library','https://images.nasa.gov/'],
+      ['FAA Aircraft Characteristics Database','https://www.faa.gov/airports/engineering/aircraft_char_database'],
+      ['EASA Type Certificates and Data Sheets','https://www.easa.europa.eu/en/document-library/type-certificates'],
+      ['UIUC Airfoil Coordinates Database','https://m-selig.ae.illinois.edu/ads/coord_database.html'],
+      ['UIUC Aircraft-to-Airfoil Guide','https://m-selig.web.engr.illinois.edu/ads/aircraft.html'],
+      ['Boeing Airport Planning Documents','https://www.boeing.com/commercial/airports/plan-manuals'],
+      ['Airbus Aircraft Characteristics','https://www.airbus.com/en/products-services/commercial-aircraft']
+    ];
+    links.forEach(([label,url])=>addLink(box,label,url));
+    panel.append(box);return;
+  }
   if(kind==='images'){const grid=el('div','image-grid');items.forEach((it,i)=>grid.append(imageCard(it,i)));panel.append(grid);}
   else items.forEach((it,i)=>panel.append(resultCard(it,i,kind)));
 }
@@ -101,15 +118,28 @@ async function loadCatalog(){
   try{
     const response=await fetch('/api/aircraft');const data=await response.json();
     aircraftCatalog=data.aircraft||[];
-    const list=$('aircraftSuggestions');
+    const select=$('aircraftSelect');
+    const grouped=new Map();
+    aircraftCatalog.sort((a,b)=>a.manufacturer.localeCompare(b.manufacturer)||a.name.localeCompare(b.name));
     aircraftCatalog.forEach(a=>{
-      const option=document.createElement('option');option.value=a.name;
-      option.label=`${a.manufacturer} · ${a.category}${a.icao?' · ICAO '+a.icao:''}`;
-      list.append(option);
+      if(!grouped.has(a.manufacturer))grouped.set(a.manufacturer,[]);
+      grouped.get(a.manufacturer).push(a);
+    });
+    grouped.forEach((items,manufacturer)=>{
+      const group=document.createElement('optgroup');group.label=manufacturer;
+      items.forEach(a=>{
+        const option=document.createElement('option');option.value=a.name;
+        option.textContent=`${a.name}${a.icao?' — '+a.icao:''}`;
+        group.append(option);
+      });
+      select.append(group);
     });
   }catch(e){console.warn('Aircraft dataset could not be loaded',e);}
 }
 loadCatalog();
+$('aircraftSelect').addEventListener('change',event=>{
+  if(event.target.value)$('query').value=event.target.value;
+});
 
 function infoValue(value,unit=''){
   return value===null||value===undefined||value===''?'Not listed in current dataset':`${value}${unit}`;
