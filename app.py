@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 import requests
 import re
+import json
 import ipaddress
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -180,7 +181,20 @@ def dedupe_web(items, query, limit):
         body = str(item.get('body') or item.get('snippet') or '').strip()
         if not title or not url:
             continue
-        if not is_aerospace_relevant(query, title, body, url):
+        record = find_aircraft_record(query) if 'find_aircraft_record' in globals() else None
+        if record:
+            # Match the user's actual search terms (e.g. "10" or "Warthog"),
+            # not every token in the expanded formal manufacturer name.
+            subject_text = f"{title} {body}".lower()
+            requested_terms = query_tokens(query)
+            identity_terms = [t for t in requested_terms if any(ch.isdigit() for ch in t)]
+            if not identity_terms:
+                identity_terms = requested_terms[:]
+            if not identity_terms or not any(t in subject_text for t in identity_terms):
+                continue
+            if not is_aerospace_relevant(query, title, body, ""):
+                continue
+        elif not is_aerospace_relevant(query, title, body, url):
             continue
         key = url.split('#')[0].rstrip('/').lower()
         if key in seen:
@@ -819,6 +833,145 @@ def api_extract():
             'error': f'Could not extract this page: {exc}. Open the original source directly.'
         }), 502
 
+
+
+from pathlib import Path as _Path
+AIRCRAFT_DATA_PATH = _Path(__file__).with_name("aircraft_dataset.json")
+try:
+    with AIRCRAFT_DATA_PATH.open("r", encoding="utf-8") as _f:
+        AIRCRAFT_DATA = json.load(_f)
+except Exception:
+    AIRCRAFT_DATA = []
+
+def _aircraft_key(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+def find_aircraft_record(query):
+    key = _aircraft_key(query)
+    if not key:
+        return None
+    for record in AIRCRAFT_DATA:
+        candidates = [record.get("name"), record.get("id"), record.get("icao")]
+        if any(key == _aircraft_key(candidate) for candidate in candidates if candidate):
+            return record
+    # Match exact known aliases only; avoid fuzzy guessing on aircraft identity.
+    aliases = {
+        "a10warthog": "fairchild-republic-a-10c-thunderbolt-ii",
+        "warthog": "fairchild-republic-a-10c-thunderbolt-ii",
+        "f16": "lockheed-martin-f-16c-fighting-falcon",
+        "f22": "lockheed-martin-f-22a-raptor",
+        "f35": "lockheed-martin-f-35a-lightning-ii",
+        "747": "boeing-747-400",
+        "boeing747": "boeing-747-400",
+        "787": "boeing-787-9",
+        "777": "boeing-777-300er",
+        "320": "airbus-a320",
+        "a320neo": "airbus-a320",
+        "jf17": "jf-17-thunder-fc-1",
+        "globalhawk": "northrop-grumman-rq-4-global-hawk",
+        "mq9": "general-atomics-mq-9-reaper",
+        "concorde": "concorde"
+    }
+    target = aliases.get(key)
+    if target:
+        return next((r for r in AIRCRAFT_DATA if r["id"] == target), None)
+    return None
+
+@app.get("/api/aircraft")
+def api_aircraft_catalog():
+    return jsonify({
+        "aircraft": [
+            {"id": r["id"], "name": r["name"], "manufacturer": r["manufacturer"],
+             "category": r["category"], "icao": r.get("icao")}
+            for r in AIRCRAFT_DATA
+        ],
+        "count": len(AIRCRAFT_DATA)
+    })
+
+@app.get("/api/aircraft/<aircraft_id>")
+def api_aircraft_info(aircraft_id):
+    record = next((r for r in AIRCRAFT_DATA if r["id"] == aircraft_id), None)
+    if not record:
+        return jsonify({"available": False, "message": "This aircraft is not available in the current Aeroscraping aircraft dataset."}), 404
+    return jsonify({"available": True, "aircraft": record})
+
+AIRFOIL_AIRCRAFT_MAP = {
+    # Source: David Lednicer, The Incomplete Guide to Airfoil Usage,
+    # hosted by the UIUC Airfoil Data Site. Root/tip are listed separately.
+    "northrop-grumman-rq-4-global-hawk": [
+        {"name": "LRN 1015 (wing section)", "file": "lrn1015.dat",
+         "evidence": "The UIUC airfoil directory explicitly identifies LRN 1015 as the airfoil used on the Northrop Grumman RQ-4 Global Hawk.",
+         "url": "https://m-selig.ae.illinois.edu/ads/coord/lrn1015.dat"}
+    ],
+    "fairchild-republic-a-10c-thunderbolt-ii": [
+        {"name": "NACA 6716 — wing root", "file": "naca6716.dat",
+         "evidence": "The UIUC aircraft-to-airfoil guide lists NACA 6716 at the Fairchild A-10 Thunderbolt II wing root.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name": "NACA 6713 — wing tip", "file": "naca6713.dat",
+         "evidence": "The UIUC aircraft-to-airfoil guide lists NACA 6713 at the Fairchild A-10 Thunderbolt II wing tip.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ],
+    "lockheed-martin-f-16c-fighting-falcon": [
+        {"name": "NACA 64A204 — root and tip (listed)", "file": "",
+         "evidence": "The UIUC guide lists NACA 64A204 for the General Dynamics / Lockheed Martin F-16 Fighting Falcon at both root and tip.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ],
+    "lockheed-martin-f-35a-lightning-ii": [
+        {"name": "NACA 65A modified (designation as listed)", "file": "",
+         "evidence": "The UIUC guide lists NACA 65A modified for the Lockheed Martin F-35 Lightning II; the source does not specify separate root and tip variants in that row.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ],
+    "boeing-747-400": [
+        {"name": "BAC 463–468 — wing root family", "file": "",
+         "evidence": "The UIUC guide lists BAC 463 through BAC 468 for the Boeing 747-400 wing root. These are a family of custom Boeing sections, not a single NACA profile.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name": "BAC 469–474 — wing tip family", "file": "",
+         "evidence": "The UIUC guide lists BAC 469 through BAC 474 for the Boeing 747-400 wing tip.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ],
+    "airbus-a320": [
+        {"name": "Wing-root thickness ratio: 15%", "file": "",
+         "evidence": "The UIUC guide gives a 15% root thickness ratio and 11% tip thickness ratio for the Airbus A320. It does not publish an exact airfoil designation in this entry.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"},
+        {"name": "Wing-tip thickness ratio: 11%", "file": "",
+         "evidence": "The UIUC guide gives an 11% tip thickness ratio for the Airbus A320; this is a thickness ratio, not an airfoil designation.",
+         "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ]
+}
+
+
+@app.get("/api/aircraft/lookup")
+def api_aircraft_lookup():
+    query = request.args.get("query", "").strip()
+    record = find_aircraft_record(query)
+    if not record:
+        return jsonify({"available": False, "message": "This aircraft is not available in the current Aeroscraping aircraft dataset."}), 404
+    return jsonify({"available": True, "aircraft": record})
+
+@app.get("/api/airfoil")
+def api_airfoil_lookup():
+    query = request.args.get("query", "").strip()
+    record = find_aircraft_record(query)
+    if not record:
+        return jsonify({
+            "available": False,
+            "message": "This aircraft is not available in the current Aeroscraping aircraft dataset. Choose a listed aircraft or search an airfoil designation directly."
+        }), 404
+    profiles = AIRFOIL_AIRCRAFT_MAP.get(record["id"], [])
+    return jsonify({
+        "available": True,
+        "aircraft": record["name"],
+        "profiles": profiles,
+        "message": (
+            "A documented aircraft-to-airfoil association is available below."
+            if profiles else
+            "No verified airfoil designation for this aircraft is currently recorded in Aeroscraping's curated dataset. We will not guess or assign a generic NACA profile. Check the UIUC airfoil directory and aircraft technical publications for a documented section."
+        ),
+        "sources": [
+            {"name": "UIUC Airfoil Coordinates Database (~1,650 profiles)", "url": "https://m-selig.web.engr.illinois.edu/ads/coord_database.html"},
+            {"name": "UIUC Incomplete Guide to Airfoil Usage (aircraft-to-airfoil references)", "url": "https://m-selig.web.engr.illinois.edu/ads/coord_database.html"}
+        ]
+    })
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)

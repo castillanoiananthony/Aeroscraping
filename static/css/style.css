@@ -4,3 +4,51 @@
 @media(max-width:640px){.app-shell{display:flex;flex-direction:column}.sidebar{border-right:0;border-bottom:1px solid var(--line);padding:15px 15px 18px}.profile-area{margin-bottom:17px}.profile-card{width:min(420px,calc(100vw - 30px));left:0}.settings{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.settings h2{grid-column:1/-1;margin:0 0 5px}.settings label{font-size:13px;margin:12px 0 7px}.settings input,.settings select{height:42px;font-size:14px}.sidebar-note{display:none}.main-content{padding:15px 14px 24px}.hero{padding:22px 0 25px}.hero h1{font-size:clamp(2.8rem,13vw,4.4rem)}.byline{margin:12px 0 17px}.tagline{font-size:14px;line-height:1.5}.search-panel{padding:15px 13px}.search-row{grid-template-columns:1fr;gap:10px}.search-row button{width:100%}.tabs{gap:0}.tab{font-size:13px;padding:11px 9px}.results-heading h2{font-size:21px}.result-card{padding:14px}.image-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.image-card img{height:125px}.image-card p{font-size:12px;padding:8px}.footer{font-size:12px}}
 
 .drawing-preview{display:block;max-width:min(100%,680px);max-height:360px;object-fit:contain;object-position:left center;margin:14px 0;border:1px solid var(--line);border-radius:9px;background:#fff;padding:8px}
+
+/* Aeroscraping v3 workspace enhancements */
+.sidebar-topline{display:flex;align-items:center;gap:10px;margin-bottom:20px}
+.sidebar-toggle{width:38px;height:36px;border:1px solid var(--line);border-radius:8px;background:#2a2724;color:var(--text);cursor:pointer}
+.sidebar-heading{font-size:13px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.early-note,.tips-panel{border:1px solid var(--line);background:#272421;border-radius:11px;padding:14px;margin:0 0 16px}
+.early-note .note-kicker{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#d8ad70;margin-bottom:7px}
+.early-note h2,.tips-panel h2{font-size:15px;margin:0 0 8px}
+.early-note p,.tips-panel li{font-size:12px;line-height:1.55;color:#bdb7b0}
+.early-note p{margin:0}
+.tips-panel ul{margin:0;padding-left:17px}
+.tips-panel li{margin:7px 0}
+.search-hint{font-size:12px;color:var(--muted);margin-top:10px}
+.app-shell.sidebar-collapsed{grid-template-columns:64px minmax(0,1fr)}
+.sidebar-collapsed .sidebar{padding:20px 12px}
+.sidebar-collapsed .sidebar-heading,.sidebar-collapsed .profile-area,.sidebar-collapsed .early-note,.sidebar-collapsed .tips-panel,.sidebar-collapsed .settings,.sidebar-collapsed .sidebar-note{display:none}
+.sidebar-collapsed .sidebar-topline{justify-content:center}
+.sidebar-collapsed .sidebar-toggle{width:40px}
+.drawing-preview{width:auto;max-width:min(100%,760px);max-height:440px;object-fit:contain;object-position:left center}
+.source-link{display:inline-block;color:#8db9f5;margin:8px 14px 0 0;font-size:13px}
+.plane-info-card{border:1px solid var(--line);border-radius:13px;background:#201e1c;padding:20px;margin:12px 0}
+.plane-info-card h2{font-size:23px;margin:0 0 8px}
+.spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:18px 0}
+.spec-cell{border:1px solid var(--line);border-radius:9px;background:#292623;padding:13px}
+.spec-cell small{display:block;color:var(--muted);margin-bottom:8px}
+.spec-cell strong{font-size:16px;overflow-wrap:anywhere}
+.source-disclaimer{font-size:12px;color:#c1aaa0;line-height:1.6}
+.source-links{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:12px}
+.dataset-unavailable{border:1px solid #8a6344;background:#2d241e;border-radius:10px;padding:18px;color:#e6c5a5;line-height:1.6}
+.image-source{display:block;color:var(--muted);padding:0 12px 10px;font-size:11px}
+@media(max-width:850px){.app-shell.sidebar-collapsed{grid-template-columns:56px minmax(0,1fr)}}
+@media(max-width:640px){
+  .app-shell{display:grid;grid-template-columns:1fr}
+  .app-shell.sidebar-collapsed{grid-template-columns:1fr}
+  .sidebar{padding:12px 14px}
+  .sidebar-topline{margin-bottom:10px}
+  .sidebar-heading{display:inline}
+  .sidebar-collapsed .sidebar-heading{display:none}
+  .sidebar-collapsed .sidebar{display:flex;justify-content:flex-start;padding:8px 12px}
+  .sidebar-collapsed .sidebar-topline{margin:0}
+  .sidebar-collapsed .sidebar-toggle{display:block}
+  .sidebar-collapsed .profile-area,.sidebar-collapsed .early-note,.sidebar-collapsed .tips-panel,.sidebar-collapsed .settings,.sidebar-collapsed .sidebar-note{display:none}
+  .early-note,.tips-panel{padding:11px;margin-bottom:10px}
+  .settings{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .settings h2{grid-column:1/-1}
+  .tabs{overflow-x:auto;justify-content:flex-start}
+  .tab{white-space:nowrap}
+}

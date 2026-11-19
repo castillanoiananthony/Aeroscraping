@@ -46,3 +46,18 @@ Do not point the live domain to a guessed IP or DNS record. Copy the exact CNAME
 Search providers do not guarantee a requested number of results. A 150-result limit is a maximum, not a promise. Relevance filtering intentionally returns fewer results rather than filling the page with unrelated material. A technical-drawing tab may be empty for a topic if Commons has no matching diagram files; this is preferable to falsely labelling ordinary images or unrelated pages as engineering drawings.
 
 OpenAlex and Crossref provide scholarly metadata, not guaranteed full-text access. Abstracts are shown only when supplied by the provider. Page extraction is best-effort and does not bypass paywalls, logins, or anti-bot protections.
+
+
+## Aeroscraping aircraft research workspace update
+
+- Unified aircraft research search expands one query across the ASE 111 report areas.
+- Technical drawings and images are shown as visual previews when the provider returns image URLs.
+- Search suggestions are populated from `aircraft_dataset.json`.
+- Plane Information is limited to aircraft in that curated dataset. Unknown aircraft explicitly return an unavailable-in-dataset message.
+- Airfoil tab only reports aircraft-to-airfoil associations that have a source-backed mapping. It does not invent a generic airfoil assignment.
+- The initial curated aircraft catalogue contains 65 aircraft across Airbus, Boeing, experimental X-aircraft, US and European fighters, Russian and Chinese aircraft, JF-17, and unmanned aircraft.
+
+Data notes:
+- Aircraft dimensions and performance values are approximate reference figures and can vary by variant/configuration. Verify with manufacturer documents and applicable type-certificate/authority data before formal use.
+- UIUC Airfoil Coordinates Database: https://m-selig.web.engr.illinois.edu/ads/coord_database.html
+- FAA Aircraft Characteristics Database: https://www.faa.gov/airports/engineering/aircraft_char_database
