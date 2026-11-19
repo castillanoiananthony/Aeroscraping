@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 SESSION = requests.Session()
 SESSION.headers.update({'User-Agent': 'Aeroscraping/2.0 (aerospace research discovery; contact: castillano.iananthony.h@gmail.com)'})
 TIMEOUT = 14
@@ -219,6 +220,7 @@ def home():
     return render_template('index.html')
 
 @app.post('/api/search')
+@app.post('/undefinedsearch')  # Compatibility with an older cached frontend script.
 def api_search():
     data = request.get_json(silent=True) or {}
     query = str(data.get('query','')).strip()
