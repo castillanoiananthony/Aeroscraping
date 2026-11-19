@@ -46,7 +46,7 @@ function resultCard(item, index, category) {
   const meta=[item.authors,item.year,item.source,item.license].filter(Boolean).join(' · ');
   if(meta) card.append(el('div','result-url',meta));
   if(url) card.append(el('div','result-url',url));
-  if(category==='Technical drawings') {
+  if(category==='Technical drawings' || category==='Technical drawings / engineering reference') {
     const previewUrl=safeUrl(item.image || item.thumbnail || '');
     if(previewUrl) {
       const img=document.createElement('img'); img.className='drawing-preview'; img.src=previewUrl; img.alt=title; img.loading='lazy';

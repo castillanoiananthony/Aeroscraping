@@ -157,7 +157,7 @@ def ddg_text(query, region, safe, limit):
     errors = []
     # Mojeek is timing out intermittently on hosted instances. Retry through
     # independent DDGS backends before reporting the provider as unavailable.
-    for backend in ("bing", "brave", "duckduckgo"):
+    for backend in ("auto", "bing", "brave", "duckduckgo"):
         try:
             with DDGS() as ddgs:
                 rows = list(ddgs.text(
@@ -173,7 +173,7 @@ def ddg_text(query, region, safe, limit):
 
 def ddg_images(query, region, safe, limit):
     errors = []
-    for backend in ("bing", "brave", "duckduckgo"):
+    for backend in ("auto", "bing", "brave", "duckduckgo"):
         try:
             with DDGS() as ddgs:
                 rows = list(ddgs.images(
@@ -188,62 +188,46 @@ def ddg_images(query, region, safe, limit):
 
 
 def dedupe_web(items, query, limit):
+    """Keep broad search-engine matches; discard only empty, duplicate and obvious junk."""
     seen, output = set(), []
+    blocked = (
+        "phonics song", "lyrics", "music video", "letter a song",
+        "word search", "crossword", "pinterest login"
+    )
     for item in items:
-        title = str(item.get('title') or '').strip()
-        url = str(item.get('href') or item.get('url') or '').strip()
-        body = str(item.get('body') or item.get('snippet') or '').strip()
-        if not title or not url:
+        title = str(item.get("title") or "").strip()
+        url = str(item.get("href") or item.get("url") or "").strip()
+        body = str(item.get("body") or item.get("snippet") or "").strip()
+        if not title or not url or not url.startswith(("http://", "https://")):
             continue
-        record = find_aircraft_record(query) if 'find_aircraft_record' in globals() else None
-        if record:
-            # Match the user's actual search terms (e.g. "10" or "Warthog"),
-            # not every token in the expanded formal manufacturer name.
-            subject_text = f"{title} {body}".lower()
-            requested_terms = query_tokens(query)
-            identity_terms = [t for t in requested_terms if any(ch.isdigit() for ch in t)]
-            if not identity_terms:
-                identity_terms = requested_terms[:]
-            if not identity_terms or not any(t in subject_text for t in identity_terms):
-                continue
-            if not is_aerospace_relevant(query, title, body, ""):
-                continue
-        elif not is_aerospace_relevant(query, title, body, url):
+        blob = f"{title} {body} {url}".lower()
+        if any(term in blob for term in blocked):
             continue
-        key = url.split('#')[0].rstrip('/').lower()
+        key = url.split("#")[0].rstrip("/").lower()
         if key in seen:
             continue
         seen.add(key)
-        output.append({
-            **item,
-            'title': title,
-            'href': url,
-            'body': body
-        })
+        output.append({**item, "title": title, "href": url, "body": body})
         if len(output) >= limit:
             break
     return output
 
 
 def search_web(query, region, safe, limit):
-    # One search term automatically expands across every ASE 111 report area.
-    # The user does not need to submit separate searches for each engineering topic.
+    """Broad aircraft web search, similar to a normal search engine."""
     variants = [
-        f'"{query}" aircraft aerospace engineering specifications',
-        f'{query} aircraft configuration three view general arrangement dimensions',
-        f'{query} wing planform sweep airfoil empennage tail configuration',
-        f'{query} aircraft structure fuselage frames wing spars ribs materials',
-        f'{query} landing gear arrangement propulsion engine installation nacelle',
-        f'{query} aerodynamics high lift flaps slats spoilers control surfaces',
-        f'{query} flight controls actuation hydraulics fly by wire',
-        f'{query} avionics cockpit instruments flight deck systems',
-        f'{query} NASA technical report aircraft engineering design',
-        f'{query} FAA EASA certification type certificate technical data',
-        f'{query} manufacturer aircraft maintenance training manual technical publication'
+        f'"{query}" aircraft',
+        f'"{query}" airplane specifications',
+        f'{query} aircraft technical data',
+        f'{query} aircraft design dimensions',
+        f'{query} aircraft engineering',
+        f'{query} aircraft manual pdf',
+        f'{query} aircraft drawing',
+        f'{query} aircraft airfoil wing structure'
     ]
     collected, errors = [], []
-    per_query = max(15, min(60, (limit + len(variants) - 1) // len(variants)))
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    per_query = max(20, min(80, (limit + len(variants) - 1) // len(variants)))
+    with ThreadPoolExecutor(max_workers=6) as pool:
         futures = [
             pool.submit(ddg_text, term, region, safe, per_query)
             for term in variants
@@ -255,7 +239,7 @@ def search_web(query, region, safe, limit):
                 if error:
                     errors.append(error)
             except Exception as exc:
-                errors.append(f'Web search task: {exc}')
+                errors.append(f"Web search task: {exc}")
     return dedupe_web(collected, query, limit), errors
 
 
@@ -384,74 +368,67 @@ def technical_search_terms(subject):
 
 
 def search_ddg_technical_images(query, limit, errors):
-    """Find image previews for each technical topic through one submitted query."""
+    """
+    Search drawing-specific phrases for the exact requested aircraft.
+    Search engines often return valid drawings whose filenames/captions omit
+    the aircraft name, so do not reject them solely on title-token matching.
+    """
     output, seen = [], set()
-    topic_queries = technical_search_terms(query)
-
-    # Each query is explicitly aircraft-specific and scoped to a report topic.
-    per_query = max(12, min(35, (limit + len(topic_queries) - 1) // len(topic_queries)))
-
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    topic_queries = [
+        ("Three-view / orthographic", f'"{query}" aircraft three view drawing'),
+        ("General arrangement", f'"{query}" aircraft general arrangement drawing'),
+        ("Wing planform", f'"{query}" aircraft wing planform drawing'),
+        ("Airfoil / aerofoil", f'"{query}" {query} airfoil aerofoil section'),
+        ("Structural drawing", f'"{query}" aircraft wing spar rib fuselage structure drawing'),
+        ("Empennage / controls", f'"{query}" aircraft tail empennage control surface drawing'),
+        ("Landing gear", f'"{query}" aircraft landing gear technical drawing'),
+        ("Propulsion installation", f'"{query}" aircraft engine installation nacelle drawing'),
+        ("Cockpit / avionics", f'"{query}" aircraft cockpit avionics layout diagram')
+    ]
+    per_query = max(20, min(60, (limit + len(topic_queries) - 1) // len(topic_queries)))
+    with ThreadPoolExecutor(max_workers=6) as pool:
         futures = {
-            pool.submit(
-                ddg_images,
-                search_text,
-                "wt-wt",
-                "moderate",
-                per_query
-            ): (label, search_text)
-            for label, search_text in topic_queries
+            pool.submit(ddg_images, phrase, "wt-wt", "moderate", per_query): (label, phrase)
+            for label, phrase in topic_queries
         }
-
         for future in as_completed(futures):
-            label, search_text = futures[future]
+            label, phrase = futures[future]
             try:
                 items, error = future.result()
                 if error:
                     errors.append(f"{label}: {error}")
                     continue
-
                 for item in items:
                     title = str(item.get("title") or "").strip()
-                    image_url = (
-                        item.get("image")
-                        or item.get("thumbnail")
-                        or item.get("url")
-                    )
+                    image_url = item.get("image") or item.get("thumbnail") or item.get("url")
                     page_url = item.get("url") or image_url
-                    source_text = str(item.get("source") or "")
-                    evidence_text = f"{title} {source_text} {page_url or ''}"
-
-                    if not title or not image_url:
+                    if not image_url:
                         continue
-                    if not matches_requested_subject(query, title, evidence_text):
-                        continue
-                    if not has_drawing_evidence(title, evidence_text):
-                        continue
-
                     key = str(image_url).split("?")[0].lower()
                     if key in seen:
                         continue
                     seen.add(key)
-
                     output.append({
-                        "title": title,
+                        "title": title or f"{query} — {label} search candidate",
                         "href": page_url or image_url,
                         "url": page_url or image_url,
                         "image": image_url,
                         "thumbnail": item.get("thumbnail") or image_url,
-                        "body": f"Technical reference search: {label}. Search phrase: {search_text}",
-                        "description": f"Returned by an aircraft-specific technical image search for {label}.",
+                        "body": (
+                            f"Returned for the exact aircraft query: {phrase}. "
+                            "This is a drawing-search candidate; open the source and confirm "
+                            "aircraft variant, view, dimensions, and drawing provenance."
+                        ),
+                        "description": f"Aircraft-specific drawing search candidate: {label}.",
                         "drawing_type": label,
-                        "category": "Technical drawing / engineering reference",
-                        "source": source_text or "DuckDuckGo Images",
-                        "license": "Check original source"
+                        "category": "Technical drawing candidate — verify source",
+                        "source": item.get("source") or "Image search",
+                        "license": "Check original source and reuse terms"
                     })
                     if len(output) >= limit:
                         return output[:limit]
             except Exception as exc:
                 errors.append(f"{label}: {exc}")
-
     return output[:limit]
 
 
@@ -513,8 +490,9 @@ def search_commons_drawings(query, limit):
 
                 # Match the requested aircraft, but accept common drawing
                 # captions such as "side/top/front/section" and "geometry".
-                if not matches_requested_subject(query, raw_title, description):
-                    continue
+                # Wikimedia's indexed file title/caption can omit the model name.
+                # The file is still returned as a candidate because this API query
+                # was already scoped to the requested aircraft plus drawing terms.
                 if not has_drawing_evidence(raw_title, description):
                     continue
 
@@ -568,8 +546,8 @@ def search_ntrs_drawings(query, limit):
                 evidence = f"{title} {abstract}"
                 if not title or not rid:
                     continue
-                if not matches_requested_subject(query, title, abstract):
-                    continue
+                # The NTRS query already includes the exact aircraft/model and
+                # drawing terms; NASA abstracts may not repeat the model string.
                 if not has_drawing_evidence(title, abstract):
                     continue
                 href = f"https://ntrs.nasa.gov/citations/{rid}"
