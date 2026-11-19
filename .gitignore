@@ -2,3 +2,16 @@
 __pycache__/
 *.pyc
 .env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Virtual environments
+venv/
+.venv/
