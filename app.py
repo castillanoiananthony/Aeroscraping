@@ -90,6 +90,51 @@ def query_match_score(query, text):
     return hits / len(query_words)
 
 
+def specific_query_terms(query):
+    generic = {
+        'aircraft', 'airplane', 'aerospace', 'aviation', 'technical',
+        'drawing', 'drawings', 'diagram', 'diagrams', 'engineering',
+        'design', 'image', 'images', 'photo', 'photos', 'the', 'and',
+        'for', 'with', 'of', 'view', 'views', 'three'
+    }
+    return [t for t in tokens(query) if t not in generic]
+
+
+def matches_requested_subject(query, title, description=''):
+    """
+    Strictly require the requested subject in the file title/caption.
+    This prevents a generic aircraft document from appearing for Concorde.
+    """
+    terms = specific_query_terms(query)
+    if not terms:
+        return False
+    text = f'{title} {description}'.lower()
+    text_norm = norm(text)
+    matched = sum(
+        1 for term in terms
+        if term in tokens(text) or norm(term) in text_norm
+    )
+    # One-word aircraft names (e.g. Concorde) must match exactly.
+    if len(terms) == 1:
+        return matched == 1
+    return matched >= max(1, (len(terms) + 1) // 2)
+
+
+def has_drawing_evidence(title, description, filename=''):
+    text = f'{title} {description} {filename}'.lower()
+    drawing_markers = (
+        'three view', 'three-view', '3-view', 'orthographic',
+        'blueprint', 'technical drawing', 'engineering drawing',
+        'airfoil', 'aerofoil', 'airfoil profile', 'airfoil section',
+        'planform', 'cross-section', 'cross section', 'schematic',
+        'diagram', 'structural layout', 'spar', 'rib',
+        'fuselage frame', 'empennage', 'control surface',
+        'general arrangement', 'dimensions', 'line drawing',
+        'outline drawing'
+    )
+    return any(marker in text for marker in drawing_markers)
+
+
 def is_aerospace_relevant(query, title, body='', url=''):
     blob = f'{title} {body} {url}'.lower()
     qscore = query_match_score(query, blob)
@@ -208,14 +253,8 @@ def search_nasa_images(query, limit):
                 )
                 if not image_url:
                     continue
-                if not is_aerospace_relevant(query, title, description, image_url):
-                    # NASA aircraft-specific query results are still useful;
-                    # do not discard them merely because NASA's caption is short.
-                    if not any(word in f'{title} {description}'.lower()
-                               for word in ('aircraft', 'airplane', 'aviation',
-                                            'wing', 'flight', 'aeronautic',
-                                            'concorde', 'jet')):
-                        continue
+                if not matches_requested_subject(query, title, description):
+                    continue
                 key = nasa_id or image_url
                 if key in seen:
                     continue
@@ -282,15 +321,29 @@ def search_images(query, region, safe, limit):
     return output[:limit], nasa_errors
 
 
+
+
+
 def search_commons_drawings(query, limit):
     """
-    Search Wikimedia Commons using broad technical-drawing queries.
-    Keep files with a preview image and a source page; avoid brittle
-    keyword-only filtering that previously returned zero drawings.
+    Query-specific technical drawing search.
+
+    Results must match the requested aircraft/topic AND contain evidence
+    that the file is a drawing, diagram, airfoil, planform, or structure.
+    Generic aircraft files and unrelated PDF papers are deliberately excluded.
     """
     results, errors, seen = [], [], set()
-    query_list = [f'{query} aircraft technical drawing']
-    query_list.extend(DRAWING_QUERIES)
+    subject = query.strip()
+    query_list = [
+        f'"{subject}" aircraft technical drawing',
+        f'"{subject}" three view drawing',
+        f'"{subject}" blueprint',
+        f'"{subject}" orthographic',
+        f'"{subject}" aircraft diagram',
+        f'"{subject}" planform',
+        f'"{subject}" airfoil',
+        f'"{subject}" aircraft structure'
+    ]
     per_query = max(20, min(60, (limit + len(query_list) - 1) // len(query_list)))
 
     for search_term in query_list:
@@ -305,14 +358,24 @@ def search_commons_drawings(query, limit):
                     'gsrnamespace': 6,
                     'gsrlimit': per_query,
                     'prop': 'imageinfo',
-                    'iiprop': 'url|extmetadata',
-                    'iiurlwidth': 1000
+                    'iiprop': 'url|mime|extmetadata',
+                    'iiurlwidth': 1200
                 }
             )
             pages = (data.get('query') or {}).get('pages') or {}
             for page in pages.values():
-                file_title = page.get('title', '').replace('File:', '')
+                raw_file_title = page.get('title', '').replace('File:', '')
                 info = (page.get('imageinfo') or [{}])[0]
+                mime = (info.get('mime') or '').lower()
+                ext = raw_file_title.rsplit('.', 1)[-1].lower() if '.' in raw_file_title else ''
+
+                # Do not present journal articles/legal papers as drawings.
+                # Keep raster images and SVG vector diagrams; reject PDFs.
+                if mime and not (mime.startswith('image/') or mime == 'image/svg+xml'):
+                    continue
+                if ext in {'pdf', 'djvu', 'doc', 'docx', 'ppt', 'pptx'}:
+                    continue
+
                 metadata = info.get('extmetadata') or {}
                 description_html = metadata.get('ImageDescription', {}).get('value', '')
                 description = BeautifulSoup(
@@ -325,33 +388,28 @@ def search_commons_drawings(query, limit):
                 preview = info.get('thumburl') or info.get('url')
                 if not preview:
                     continue
-                combined = f'{file_title} {description}'.lower()
-                # Search terms themselves are technical-drawing focused.
-                # Require a relevant aircraft/engineering clue, but not an
-                # exact phrase; Commons captions are often sparse.
-                drawing_match = any(term in combined for term in DRAWING_TERMS)
-                aircraft_match = any(term in combined for term in (
-                    'aircraft', 'airplane', 'aeroplane', 'aviation',
-                    'airfoil', 'aerofoil', 'wing', 'fuselage',
-                    'airbus', 'boeing', 'concorde', 'naca', 'cessna',
-                    'fighter', 'jet', 'glider', 'helicopter'
-                ))
-                if not (drawing_match or aircraft_match):
+
+                # Crucial: both subject match and drawing evidence are required.
+                if not matches_requested_subject(subject, raw_file_title, description):
                     continue
+                if not has_drawing_evidence(raw_file_title, description):
+                    continue
+
                 key = page_url.split('#')[0].lower()
                 if key in seen:
                     continue
                 seen.add(key)
+
                 results.append({
-                    'title': file_title,
+                    'title': raw_file_title,
                     'href': page_url,
                     'url': page_url,
                     'image': preview,
                     'thumbnail': preview,
                     'body': description[:1800] or
-                            'Technical image from Wikimedia Commons. Open the source page to inspect its description and licensing.',
+                            'Technical drawing file. Open the original source page to inspect details and licensing.',
                     'description': description[:1800],
-                    'drawing_type': classify_drawing(file_title + ' ' + description),
+                    'drawing_type': classify_drawing(raw_file_title + ' ' + description),
                     'category': 'Technical drawing / engineering reference',
                     'source': 'Wikimedia Commons',
                     'license': metadata.get('LicenseShortName', {}).get('value', 'Check source page')
@@ -360,6 +418,7 @@ def search_commons_drawings(query, limit):
                     return results[:limit], errors
         except Exception as exc:
             errors.append(f'Wikimedia Commons ({search_term}): {exc}')
+
     return results[:limit], errors
 
 
