@@ -124,13 +124,16 @@ def has_drawing_evidence(title, description, filename=''):
     text = f'{title} {description} {filename}'.lower()
     drawing_markers = (
         'three view', 'three-view', '3-view', 'orthographic',
-        'blueprint', 'technical drawing', 'engineering drawing',
-        'airfoil', 'aerofoil', 'airfoil profile', 'airfoil section',
-        'planform', 'cross-section', 'cross section', 'schematic',
-        'diagram', 'structural layout', 'spar', 'rib',
-        'fuselage frame', 'empennage', 'control surface',
-        'general arrangement', 'dimensions', 'line drawing',
-        'outline drawing'
+        'orthographic projection', 'blueprint', 'technical drawing',
+        'engineering drawing', 'aircraft drawing', 'line drawing',
+        'line art', 'outline drawing', 'airfoil', 'aerofoil',
+        'airfoil profile', 'airfoil section', 'planform',
+        'cross-section', 'cross section', 'section view',
+        'schematic', 'schematics', 'diagram', 'structural layout',
+        'spar', 'rib', 'fuselage frame', 'empennage',
+        'control surface', 'general arrangement', 'dimensions',
+        'side view', 'top view', 'front view', 'rear view',
+        'plan view', 'elevation', 'geometry', 'profile'
     )
     return any(marker in text for marker in drawing_markers)
 
@@ -348,11 +351,8 @@ ASE_REPORT_TOPICS = [
 
 
 def technical_search_terms(subject):
-    """Build a comprehensive set of targeted searches from one aircraft query."""
-    return [
-        (label, f'"{subject}" {terms}')
-        for label, terms in ASE_REPORT_TOPICS
-    ]
+    """Automatically expand one aircraft query across all ASE 111 topics."""
+    return [(label, f"{subject} {terms}") for label, terms in ASE_REPORT_TOPICS]
 
 
 def search_ddg_technical_images(query, limit, errors):
@@ -429,15 +429,20 @@ def search_ddg_technical_images(query, limit, errors):
 
 def search_commons_drawings(query, limit):
     """
-    Search Wikimedia Commons for aircraft-specific drawings across all report topics.
-    A result must match the aircraft/topic and show drawing evidence. Non-image
-    documents such as legal papers and journal PDFs are rejected.
+    Search Wikimedia Commons for actual aircraft technical illustrations.
+    Subject-only and topic-specific searches prevent over-constraining captions.
     """
     results, errors, seen = [], [], set()
-    topic_queries = technical_search_terms(query)
-    per_query = max(20, min(50, (limit + len(topic_queries) - 1) // len(topic_queries)))
+    search_jobs = [
+        ("Aircraft configuration / three-view", query),
+        ("Aircraft configuration / three-view", f"{query} line drawing"),
+        ("Aircraft configuration / three-view", f"{query} orthographic"),
+        ("Aircraft configuration / three-view", f"{query} geometry"),
+    ]
+    search_jobs.extend(technical_search_terms(query))
+    per_query = max(25, min(60, (limit + len(search_jobs) - 1) // len(search_jobs)))
 
-    for label, search_term in topic_queries:
+    for label, search_term in search_jobs:
         try:
             data = get_json(
                 "https://commons.wikimedia.org/w/api.php",
@@ -450,10 +455,9 @@ def search_commons_drawings(query, limit):
                     "gsrlimit": per_query,
                     "prop": "imageinfo",
                     "iiprop": "url|mime|extmetadata",
-                    "iiurlwidth": 1200
+                    "iiurlwidth": 1400
                 }
             )
-
             pages = (data.get("query") or {}).get("pages") or {}
             for page in pages.values():
                 raw_title = page.get("title", "").replace("File:", "")
@@ -461,7 +465,6 @@ def search_commons_drawings(query, limit):
                 mime = (info.get("mime") or "").lower()
                 extension = raw_title.rsplit(".", 1)[-1].lower() if "." in raw_title else ""
 
-                # Only actual image/vector files are shown as drawings.
                 if mime and not mime.startswith("image/"):
                     continue
                 if extension in {"pdf", "djvu", "doc", "docx", "ppt", "pptx"}:
@@ -481,6 +484,8 @@ def search_commons_drawings(query, limit):
                 if not preview:
                     continue
 
+                # Match the requested aircraft, but accept common drawing
+                # captions such as "side/top/front/section" and "geometry".
                 if not matches_requested_subject(query, raw_title, description):
                     continue
                 if not has_drawing_evidence(raw_title, description):
@@ -498,16 +503,15 @@ def search_commons_drawings(query, limit):
                     "image": preview,
                     "thumbnail": preview,
                     "body": description[:1800] or
-                            f"Aircraft-specific technical reference: {label}. Open the source page to inspect the original file.",
+                            f"Aircraft-specific technical illustration found under: {label}.",
                     "description": description[:1800],
-                    "drawing_type": classify_drawing(raw_title + " " + description) if "classify_drawing" in globals() else label,
+                    "drawing_type": classify_drawing(raw_title + " " + description),
                     "category": "Technical drawing / engineering reference",
                     "source": "Wikimedia Commons",
                     "license": metadata.get("LicenseShortName", {}).get("value", "Check source page")
                 })
                 if len(results) >= limit:
                     return results[:limit], errors
-
         except Exception as exc:
             errors.append(f"Wikimedia Commons ({label}): {exc}")
 
@@ -538,7 +542,7 @@ def search_technical_drawings(query, limit):
 def classify_drawing(text):
     text = text.lower()
     labels = [
-        ('Three-view / orthographic', ('three view', 'three-view', 'orthographic', 'general arrangement')),
+        ('Three-view / orthographic', ('three view', 'three-view', 'orthographic', 'general arrangement', 'side view', 'top view', 'front view', 'plan view', 'geometry')),
         ('Airfoil profile / section', ('airfoil', 'aerofoil', 'naca')),
         ('Wing planform / geometry', ('planform', 'wing geometry')),
         ('Wing internal structure', ('spar', 'rib', 'wing structure')),
