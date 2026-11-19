@@ -128,13 +128,13 @@ def has_drawing_evidence(title, description, filename=''):
         'orthographic projection', 'blueprint', 'technical drawing',
         'engineering drawing', 'aircraft drawing', 'line drawing',
         'line art', 'outline drawing', 'airfoil', 'aerofoil',
-        'airfoil profile', 'airfoil section', 'planform',
+        'airfoil profile', 'airfoil section',
         'cross-section', 'cross section', 'section view',
         'schematic', 'schematics', 'diagram', 'structural layout',
         'spar', 'rib', 'fuselage frame', 'empennage',
         'control surface', 'general arrangement', 'dimensions',
         'side view', 'top view', 'front view', 'rear view',
-        'plan view', 'elevation', 'geometry', 'profile'
+        'plan view', 'elevation'
     )
     return any(marker in text for marker in drawing_markers)
 
@@ -154,23 +154,37 @@ def get_json(url, params=None, timeout=TIMEOUT):
 
 
 def ddg_text(query, region, safe, limit):
-    try:
-        with DDGS() as ddgs:
-            return list(ddgs.text(
-                query, region=region, safesearch=safe, max_results=limit
-            )), None
-    except Exception as exc:
-        return [], f'DuckDuckGo web search: {exc}'
+    errors = []
+    # Mojeek is timing out intermittently on hosted instances. Retry through
+    # independent DDGS backends before reporting the provider as unavailable.
+    for backend in ("bing", "brave", "duckduckgo"):
+        try:
+            with DDGS() as ddgs:
+                rows = list(ddgs.text(
+                    query, region=region, safesearch=safe,
+                    max_results=limit, backend=backend
+                ))
+                if rows:
+                    return rows, None
+        except Exception as exc:
+            errors.append(f"{backend}: {exc}")
+    return [], "Web search providers unavailable: " + " | ".join(errors[-3:])
 
 
 def ddg_images(query, region, safe, limit):
-    try:
-        with DDGS() as ddgs:
-            return list(ddgs.images(
-                query, region=region, safesearch=safe, max_results=limit
-            )), None
-    except Exception as exc:
-        return [], f'DuckDuckGo image search: {exc}'
+    errors = []
+    for backend in ("bing", "brave", "duckduckgo"):
+        try:
+            with DDGS() as ddgs:
+                rows = list(ddgs.images(
+                    query, region=region, safesearch=safe,
+                    max_results=limit, backend=backend
+                ))
+                if rows:
+                    return rows, None
+        except Exception as exc:
+            errors.append(f"{backend}: {exc}")
+    return [], "Image search providers unavailable: " + " | ".join(errors[-3:])
 
 
 def dedupe_web(items, query, limit):
@@ -448,10 +462,9 @@ def search_commons_drawings(query, limit):
     """
     results, errors, seen = [], [], set()
     search_jobs = [
-        ("Aircraft configuration / three-view", query),
-        ("Aircraft configuration / three-view", f"{query} line drawing"),
-        ("Aircraft configuration / three-view", f"{query} orthographic"),
-        ("Aircraft configuration / three-view", f"{query} geometry"),
+        ("Aircraft configuration / three-view", f"{query} aircraft three-view drawing"),
+        ("Aircraft configuration / three-view", f"{query} aircraft orthographic line drawing"),
+        ("Aircraft configuration / three-view", f"{query} aircraft general arrangement drawing"),
     ]
     search_jobs.extend(technical_search_terms(query))
     per_query = max(25, min(60, (limit + len(search_jobs) - 1) // len(search_jobs)))
@@ -532,17 +545,67 @@ def search_commons_drawings(query, limit):
     return results[:limit], errors
 
 
+def search_ntrs_drawings(query, limit):
+    """Find NASA-hosted engineering drawings and general-arrangement documents."""
+    results, errors, seen = [], [], set()
+    terms = [
+        f'"{query}" aircraft general arrangement drawing',
+        f'"{query}" aircraft three view drawing',
+        f'"{query}" aircraft wing planform drawing',
+        f'"{query}" aircraft structural drawing airfoil'
+    ]
+    for term in terms:
+        try:
+            data = get_json(
+                "https://ntrs.nasa.gov/api/citations/search",
+                {"q": term, "page.size": min(50, limit)},
+                timeout=35
+            )
+            for record in data.get("results", []):
+                title = str(record.get("title") or "").strip()
+                abstract = str(record.get("abstract") or record.get("description") or "")
+                rid = record.get("id")
+                evidence = f"{title} {abstract}"
+                if not title or not rid:
+                    continue
+                if not matches_requested_subject(query, title, abstract):
+                    continue
+                if not has_drawing_evidence(title, abstract):
+                    continue
+                href = f"https://ntrs.nasa.gov/citations/{rid}"
+                if href in seen:
+                    continue
+                seen.add(href)
+                results.append({
+                    "title": title,
+                    "href": href,
+                    "url": href,
+                    "body": BeautifulSoup(abstract, "html.parser").get_text(" ", strip=True)[:1800],
+                    "drawing_type": classify_drawing(evidence),
+                    "category": "NASA technical drawing / report",
+                    "source": "NASA Technical Reports Server",
+                    "license": "Check NASA record and document rights"
+                })
+                if len(results) >= limit:
+                    return results[:limit], errors
+        except Exception as exc:
+            errors.append(f"NASA drawing search: {exc}")
+    return results[:limit], errors
+
+
 def search_technical_drawings(query, limit):
     """
     Single-input drawing aggregator: automatically searches all assignment topics
     through Wikimedia Commons and image search, then merges verified candidates.
     """
     commons_results, errors = search_commons_drawings(query, limit)
+    nasa_results, nasa_errors = search_ntrs_drawings(query, limit)
+    errors.extend(nasa_errors)
     image_results = search_ddg_technical_images(query, limit, errors)
 
     merged, seen = [], set()
-    # Prefer source pages from Commons, then supplement with image-search sources.
-    for item in commons_results + image_results:
+    # Prefer actual archival/NASA engineering drawings, then Commons and image-search results.
+    for item in nasa_results + commons_results + image_results:
         key = (item.get("href") or item.get("image") or "").split("#")[0].lower()
         if not key or key in seen:
             continue

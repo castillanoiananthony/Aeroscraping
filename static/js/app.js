@@ -87,21 +87,24 @@ function fillPanel(id,items,kind){
   const panel=$(id);panel.replaceChildren();
   if(!items||!items.length){
     panel.append(el('div','empty','No verified results were returned for this category.'));
-    const box=el('section','recommended-sources');
-    box.append(el('h3','', 'Reliable sources to explore'));
-    box.append(el('p','', 'Try these primary or specialist aerospace references while Aeroscraping expands its indexed coverage.'));
-    const links=[
-      ['NASA Technical Reports Server (NTRS)','https://ntrs.nasa.gov/'],
-      ['NASA Image and Video Library','https://images.nasa.gov/'],
-      ['FAA Aircraft Characteristics Database','https://www.faa.gov/airports/engineering/aircraft_char_database'],
-      ['EASA Type Certificates and Data Sheets','https://www.easa.europa.eu/en/document-library/type-certificates'],
-      ['UIUC Airfoil Coordinates Database','https://m-selig.ae.illinois.edu/ads/coord_database.html'],
-      ['UIUC Aircraft-to-Airfoil Guide','https://m-selig.web.engr.illinois.edu/ads/aircraft.html'],
-      ['Boeing Airport Planning Documents','https://www.boeing.com/commercial/airports/plan-manuals'],
-      ['Airbus Aircraft Characteristics','https://www.airbus.com/en/products-services/commercial-aircraft']
-    ];
-    links.forEach(([label,url])=>addLink(box,label,url));
-    panel.append(box);return;
+    if(!searchHasAnyResults){
+      const box=el('section','recommended-sources');
+      box.append(el('h3','', 'Reliable aerospace sources'));
+      box.append(el('p','', 'No searchable results were returned across the available providers. Explore these trusted collections directly.'));
+      const links=[
+        ['NASA Technical Reports Server (NTRS)','https://ntrs.nasa.gov/'],
+        ['NASA Image and Video Library','https://images.nasa.gov/'],
+        ['FAA Aircraft Characteristics Database','https://www.faa.gov/airports/engineering/aircraft_char_database'],
+        ['EASA Type Certificates and Data Sheets','https://www.easa.europa.eu/en/document-library/type-certificates'],
+        ['Smithsonian National Air and Space Museum Technical Drawings','https://airandspace.si.edu/archives/archival-collections/technical-scale-drawings'],
+        ['AAHS 3-View Library','https://aahs-online.org/resources/search_3vu_lib.php'],
+        ['UIUC Airfoil Coordinates Database','https://m-selig.ae.illinois.edu/ads/coord_database.html'],
+        ['UIUC Aircraft-to-Airfoil Guide','https://m-selig.web.engr.illinois.edu/ads/aircraft.html']
+      ];
+      links.forEach(([label,url])=>addLink(box,label,url));
+      panel.append(box);
+    }
+    return;
   }
   if(kind==='images'){const grid=el('div','image-grid');items.forEach((it,i)=>grid.append(imageCard(it,i)));panel.append(grid);}
   else items.forEach((it,i)=>panel.append(resultCard(it,i,kind)));
@@ -113,6 +116,7 @@ function setTab(name){
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setTab(t.dataset.tab)));
 
 let lastQuery='';
+let searchHasAnyResults=false;
 let aircraftCatalog=[];
 async function loadCatalog(){
   try{
@@ -211,12 +215,13 @@ $('searchForm').addEventListener('submit',async event=>{
   event.preventDefault();
   const query=$('query').value.trim();if(!query)return;lastQuery=query;
   const button=$('searchButton'),status=$('status'),results=$('resultsSection');
-  button.disabled=true;button.textContent='Searching…';status.className='status';status.textContent='Searching the aircraft, research publications, images, technical drawings, airfoil references, and aircraft dataset…';results.hidden=true;
+  button.disabled=true;button.textContent='Searching…';$('searchLoader').hidden=false;status.className='status';status.textContent='Searching the aircraft, research publications, images, technical drawings, airfoil references, and aircraft dataset…';results.hidden=true;
   try{
     const payload={query,web_limit:Math.max(1,Math.min(1000,Number($('webLimit').value)||150)),image_limit:Math.max(1,Math.min(1000,Number($('imageLimit').value)||150)),region:$('region').value,safesearch:$('safeSearch').value};
     const response=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await response.json();if(!response.ok)throw new Error(data.error||'Search request failed.');
     const web=data.web_results||[],research=data.research_results||[],images=data.image_results||[],drawings=data.drawing_results||[];
+    searchHasAnyResults=[web,research,images,drawings].some(group=>group.length>0);
     $('resultsTitle').textContent=`Search results for: ${data.query}`;
     $('resultsCounts').textContent=`${web.length} web sources · ${research.length} research/report leads · ${images.length} images · ${drawings.length} technical drawing references`;
     $('webCount').textContent=web.length;$('researchCount').textContent=research.length;$('imageCount').textContent=images.length;$('drawingCount').textContent=drawings.length;
@@ -226,5 +231,5 @@ $('searchForm').addEventListener('submit',async event=>{
     if(data.errors&&data.errors.length)status.textContent=`Some search providers timed out or were unavailable (${data.errors.length} notices). Results from the other sources are still shown.`;
     results.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(error){status.className='status error';status.textContent=error.message;}
-  finally{button.disabled=false;button.textContent='Search';}
+  finally{button.disabled=false;button.textContent='Search';$('searchLoader').hidden=true;}
 });
