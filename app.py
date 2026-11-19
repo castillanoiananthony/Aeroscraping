@@ -195,11 +195,20 @@ def dedupe_web(items, query, limit):
 
 
 def search_web(query, region, safe, limit):
+    # One search term automatically expands across every ASE 111 report area.
+    # The user does not need to submit separate searches for each engineering topic.
     variants = [
-        f'"{query}" aircraft aerospace engineering',
-        f'{query} aircraft design aerodynamics structure propulsion',
-        f'{query} aviation technical information manufacturer NASA FAA',
-        f'{query} aircraft specifications technical data'
+        f'"{query}" aircraft aerospace engineering specifications',
+        f'{query} aircraft configuration three view general arrangement dimensions',
+        f'{query} wing planform sweep airfoil empennage tail configuration',
+        f'{query} aircraft structure fuselage frames wing spars ribs materials',
+        f'{query} landing gear arrangement propulsion engine installation nacelle',
+        f'{query} aerodynamics high lift flaps slats spoilers control surfaces',
+        f'{query} flight controls actuation hydraulics fly by wire',
+        f'{query} avionics cockpit instruments flight deck systems',
+        f'{query} NASA technical report aircraft engineering design',
+        f'{query} FAA EASA certification type certificate technical data',
+        f'{query} manufacturer aircraft maintenance training manual technical publication'
     ]
     collected, errors = [], []
     per_query = max(15, min(60, (limit + len(variants) - 1) // len(variants)))
@@ -324,103 +333,207 @@ def search_images(query, region, safe, limit):
 
 
 
+ASE_REPORT_TOPICS = [
+    ("Aircraft configuration / three-view", "three view orthographic general arrangement dimensions"),
+    ("Wing planform / sweep", "wing planform sweep geometry wing layout"),
+    ("Empennage configuration", "empennage tailplane horizontal stabilizer vertical stabilizer"),
+    ("Fuselage geometry / sections", "fuselage cross section frames stringers"),
+    ("Wing structure / spars and ribs", "wing internal structure spar rib structural layout"),
+    ("Landing gear arrangement", "landing gear layout gear arrangement technical diagram"),
+    ("Propulsion / engine installation", "engine installation nacelle inlet exhaust propulsion layout"),
+    ("Airfoil / high-lift devices", "airfoil profile section flap slat high lift device"),
+    ("Flight controls / actuation", "aileron elevator rudder spoiler control surface actuation"),
+    ("Avionics / cockpit", "cockpit instrument panel avionics flight deck layout")
+]
+
+
+def technical_search_terms(subject):
+    """Build a comprehensive set of targeted searches from one aircraft query."""
+    return [
+        (label, f'"{subject}" {terms}')
+        for label, terms in ASE_REPORT_TOPICS
+    ]
+
+
+def search_ddg_technical_images(query, limit, errors):
+    """Find image previews for each technical topic through one submitted query."""
+    output, seen = [], set()
+    topic_queries = technical_search_terms(query)
+
+    # Each query is explicitly aircraft-specific and scoped to a report topic.
+    per_query = max(12, min(35, (limit + len(topic_queries) - 1) // len(topic_queries)))
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        futures = {
+            pool.submit(
+                ddg_images,
+                search_text,
+                "wt-wt",
+                "moderate",
+                per_query
+            ): (label, search_text)
+            for label, search_text in topic_queries
+        }
+
+        for future in as_completed(futures):
+            label, search_text = futures[future]
+            try:
+                items, error = future.result()
+                if error:
+                    errors.append(f"{label}: {error}")
+                    continue
+
+                for item in items:
+                    title = str(item.get("title") or "").strip()
+                    image_url = (
+                        item.get("image")
+                        or item.get("thumbnail")
+                        or item.get("url")
+                    )
+                    page_url = item.get("url") or image_url
+                    source_text = str(item.get("source") or "")
+                    evidence_text = f"{title} {source_text} {page_url or ''}"
+
+                    if not title or not image_url:
+                        continue
+                    if not matches_requested_subject(query, title, evidence_text):
+                        continue
+                    if not has_drawing_evidence(title, evidence_text):
+                        continue
+
+                    key = str(image_url).split("?")[0].lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    output.append({
+                        "title": title,
+                        "href": page_url or image_url,
+                        "url": page_url or image_url,
+                        "image": image_url,
+                        "thumbnail": item.get("thumbnail") or image_url,
+                        "body": f"Technical reference search: {label}. Search phrase: {search_text}",
+                        "description": f"Returned by an aircraft-specific technical image search for {label}.",
+                        "drawing_type": label,
+                        "category": "Technical drawing / engineering reference",
+                        "source": source_text or "DuckDuckGo Images",
+                        "license": "Check original source"
+                    })
+                    if len(output) >= limit:
+                        return output[:limit]
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+
+    return output[:limit]
+
+
 def search_commons_drawings(query, limit):
     """
-    Query-specific technical drawing search.
-
-    Results must match the requested aircraft/topic AND contain evidence
-    that the file is a drawing, diagram, airfoil, planform, or structure.
-    Generic aircraft files and unrelated PDF papers are deliberately excluded.
+    Search Wikimedia Commons for aircraft-specific drawings across all report topics.
+    A result must match the aircraft/topic and show drawing evidence. Non-image
+    documents such as legal papers and journal PDFs are rejected.
     """
     results, errors, seen = [], [], set()
-    subject = query.strip()
-    query_list = [
-        f'"{subject}" aircraft technical drawing',
-        f'"{subject}" three view drawing',
-        f'"{subject}" blueprint',
-        f'"{subject}" orthographic',
-        f'"{subject}" aircraft diagram',
-        f'"{subject}" planform',
-        f'"{subject}" airfoil',
-        f'"{subject}" aircraft structure'
-    ]
-    per_query = max(20, min(60, (limit + len(query_list) - 1) // len(query_list)))
+    topic_queries = technical_search_terms(query)
+    per_query = max(20, min(50, (limit + len(topic_queries) - 1) // len(topic_queries)))
 
-    for search_term in query_list:
+    for label, search_term in topic_queries:
         try:
             data = get_json(
-                'https://commons.wikimedia.org/w/api.php',
+                "https://commons.wikimedia.org/w/api.php",
                 {
-                    'action': 'query',
-                    'format': 'json',
-                    'generator': 'search',
-                    'gsrsearch': search_term,
-                    'gsrnamespace': 6,
-                    'gsrlimit': per_query,
-                    'prop': 'imageinfo',
-                    'iiprop': 'url|mime|extmetadata',
-                    'iiurlwidth': 1200
+                    "action": "query",
+                    "format": "json",
+                    "generator": "search",
+                    "gsrsearch": search_term,
+                    "gsrnamespace": 6,
+                    "gsrlimit": per_query,
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime|extmetadata",
+                    "iiurlwidth": 1200
                 }
             )
-            pages = (data.get('query') or {}).get('pages') or {}
+
+            pages = (data.get("query") or {}).get("pages") or {}
             for page in pages.values():
-                raw_file_title = page.get('title', '').replace('File:', '')
-                info = (page.get('imageinfo') or [{}])[0]
-                mime = (info.get('mime') or '').lower()
-                ext = raw_file_title.rsplit('.', 1)[-1].lower() if '.' in raw_file_title else ''
+                raw_title = page.get("title", "").replace("File:", "")
+                info = (page.get("imageinfo") or [{}])[0]
+                mime = (info.get("mime") or "").lower()
+                extension = raw_title.rsplit(".", 1)[-1].lower() if "." in raw_title else ""
 
-                # Do not present journal articles/legal papers as drawings.
-                # Keep raster images and SVG vector diagrams; reject PDFs.
-                if mime and not (mime.startswith('image/') or mime == 'image/svg+xml'):
+                # Only actual image/vector files are shown as drawings.
+                if mime and not mime.startswith("image/"):
                     continue
-                if ext in {'pdf', 'djvu', 'doc', 'docx', 'ppt', 'pptx'}:
+                if extension in {"pdf", "djvu", "doc", "docx", "ppt", "pptx"}:
                     continue
 
-                metadata = info.get('extmetadata') or {}
-                description_html = metadata.get('ImageDescription', {}).get('value', '')
+                metadata = info.get("extmetadata") or {}
+                description_html = metadata.get("ImageDescription", {}).get("value", "")
                 description = BeautifulSoup(
-                    description_html, 'html.parser'
-                ).get_text(' ', strip=True)
-                page_url = info.get('descriptionurl') or (
-                    'https://commons.wikimedia.org/wiki/' +
-                    page.get('title', '').replace(' ', '_')
+                    description_html, "html.parser"
+                ).get_text(" ", strip=True)
+
+                page_url = info.get("descriptionurl") or (
+                    "https://commons.wikimedia.org/wiki/" +
+                    page.get("title", "").replace(" ", "_")
                 )
-                preview = info.get('thumburl') or info.get('url')
+                preview = info.get("thumburl") or info.get("url")
                 if not preview:
                     continue
 
-                # Crucial: both subject match and drawing evidence are required.
-                if not matches_requested_subject(subject, raw_file_title, description):
+                if not matches_requested_subject(query, raw_title, description):
                     continue
-                if not has_drawing_evidence(raw_file_title, description):
+                if not has_drawing_evidence(raw_title, description):
                     continue
 
-                key = page_url.split('#')[0].lower()
+                key = page_url.split("#")[0].lower()
                 if key in seen:
                     continue
                 seen.add(key)
 
                 results.append({
-                    'title': raw_file_title,
-                    'href': page_url,
-                    'url': page_url,
-                    'image': preview,
-                    'thumbnail': preview,
-                    'body': description[:1800] or
-                            'Technical drawing file. Open the original source page to inspect details and licensing.',
-                    'description': description[:1800],
-                    'drawing_type': classify_drawing(raw_file_title + ' ' + description),
-                    'category': 'Technical drawing / engineering reference',
-                    'source': 'Wikimedia Commons',
-                    'license': metadata.get('LicenseShortName', {}).get('value', 'Check source page')
+                    "title": raw_title,
+                    "href": page_url,
+                    "url": page_url,
+                    "image": preview,
+                    "thumbnail": preview,
+                    "body": description[:1800] or
+                            f"Aircraft-specific technical reference: {label}. Open the source page to inspect the original file.",
+                    "description": description[:1800],
+                    "drawing_type": classify_drawing(raw_title + " " + description) if "classify_drawing" in globals() else label,
+                    "category": "Technical drawing / engineering reference",
+                    "source": "Wikimedia Commons",
+                    "license": metadata.get("LicenseShortName", {}).get("value", "Check source page")
                 })
                 if len(results) >= limit:
                     return results[:limit], errors
+
         except Exception as exc:
-            errors.append(f'Wikimedia Commons ({search_term}): {exc}')
+            errors.append(f"Wikimedia Commons ({label}): {exc}")
 
     return results[:limit], errors
 
+
+def search_technical_drawings(query, limit):
+    """
+    Single-input drawing aggregator: automatically searches all assignment topics
+    through Wikimedia Commons and image search, then merges verified candidates.
+    """
+    commons_results, errors = search_commons_drawings(query, limit)
+    image_results = search_ddg_technical_images(query, limit, errors)
+
+    merged, seen = [], set()
+    # Prefer source pages from Commons, then supplement with image-search sources.
+    for item in commons_results + image_results:
+        key = (item.get("href") or item.get("image") or "").split("#")[0].lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= limit:
+            break
+
+    return merged, errors
 
 def classify_drawing(text):
     text = text.lower()
@@ -587,7 +700,7 @@ def api_search():
         futures = {
             'web': pool.submit(search_web, query, region, safe, web_limit),
             'images': pool.submit(search_images, query, region, safe, image_limit),
-            'drawings': pool.submit(search_commons_drawings, query, 150),
+            'drawings': pool.submit(search_technical_drawings, query, 150),
             'openalex': pool.submit(research_openalex, query, min(100, web_limit)),
             'crossref': pool.submit(research_crossref, query, min(100, web_limit)),
             'ntrs': pool.submit(search_ntrs, query, min(100, web_limit))
@@ -631,11 +744,23 @@ def api_search():
         'image_results': image_results[:image_limit],
         'drawing_results': drawing_results[:150],
         'errors': errors[:8],
+        'report_scope': [
+            'Aircraft configuration / three-view',
+            'Wing planform / sweep',
+            'Empennage configuration',
+            'Fuselage geometry / sections',
+            'Wing structure / spars and ribs',
+            'Landing gear arrangement',
+            'Propulsion / engine installation',
+            'Airfoil / high-lift devices',
+            'Flight controls / actuation',
+            'Avionics / cockpit'
+        ],
         'provider_summary': {
             'web': 'DuckDuckGo web search',
             'research': 'NASA NTRS + OpenAlex + Crossref',
             'images': 'NASA Image and Video Library + DuckDuckGo Images',
-            'drawings': 'Wikimedia Commons technical drawing searches'
+            'drawings': 'Aircraft-specific technical searches across Wikimedia Commons and DuckDuckGo Images; automatically expanded across all ASE 111 report topics'
         }
     })
 
