@@ -131,9 +131,9 @@ def has_drawing_evidence(title, description, filename=''):
         'airfoil profile', 'airfoil section',
         'cross-section', 'cross section', 'section view',
         'schematic', 'schematics', 'diagram', 'structural layout',
-        'spar', 'rib', 'fuselage frame', 'empennage',
-        'control surface', 'general arrangement', 'dimensions',
+        'fuselage frame', 'general arrangement',
         'side view', 'top view', 'front view', 'rear view',
+        'wing planform', 'planform',
         'plan view', 'elevation'
     )
     return any(marker in text for marker in drawing_markers)
@@ -153,38 +153,29 @@ def get_json(url, params=None, timeout=TIMEOUT):
     return response.json()
 
 
-def ddg_text(query, region, safe, limit):
-    errors = []
-    # Mojeek is timing out intermittently on hosted instances. Retry through
-    # independent DDGS backends before reporting the provider as unavailable.
-    for backend in ("auto", "bing", "brave", "duckduckgo"):
-        try:
-            with DDGS() as ddgs:
-                rows = list(ddgs.text(
-                    query, region=region, safesearch=safe,
-                    max_results=limit, backend=backend
-                ))
-                if rows:
-                    return rows, None
-        except Exception as exc:
-            errors.append(f"{backend}: {exc}")
-    return [], "Web search providers unavailable: " + " | ".join(errors[-3:])
+def ddg_text(query, region, safe, limit, backend="duckduckgo"):
+    """Query one supported DDGS text backend; caller merges provider results."""
+    try:
+        with DDGS() as ddgs:
+            rows = list(ddgs.text(
+                query, region=region, safesearch=safe,
+                max_results=limit, backend=backend
+            ))
+        return rows, None
+    except Exception as exc:
+        return [], f"{backend}: {exc}"
 
 
 def ddg_images(query, region, safe, limit):
-    errors = []
-    for backend in ("auto", "bing", "brave", "duckduckgo"):
-        try:
-            with DDGS() as ddgs:
-                rows = list(ddgs.images(
-                    query, region=region, safesearch=safe,
-                    max_results=limit, backend=backend
-                ))
-                if rows:
-                    return rows, None
-        except Exception as exc:
-            errors.append(f"{backend}: {exc}")
-    return [], "Image search providers unavailable: " + " | ".join(errors[-3:])
+    """DDGS image search has no backend argument."""
+    try:
+        with DDGS() as ddgs:
+            rows = list(ddgs.images(
+                query, region=region, safesearch=safe, max_results=limit
+            ))
+        return rows, None
+    except Exception as exc:
+        return [], f"Image search: {exc}"
 
 
 def dedupe_web(items, query, limit):
@@ -214,32 +205,30 @@ def dedupe_web(items, query, limit):
 
 
 def search_web(query, region, safe, limit):
-    """Broad aircraft web search, similar to a normal search engine."""
+    """Broad general web discovery; no aerospace keyword whitelist."""
     variants = [
-        f'"{query}" aircraft',
-        f'"{query}" airplane specifications',
-        f'{query} aircraft technical data',
-        f'{query} aircraft design dimensions',
-        f'{query} aircraft engineering',
-        f'{query} aircraft manual pdf',
-        f'{query} aircraft drawing',
-        f'{query} aircraft airfoil wing structure'
+        query, f'"{query}"', f'{query} aircraft', f'{query} airplane',
+        f'{query} specifications', f'{query} technical data',
+        f'{query} dimensions', f'{query} manual OR report OR thesis'
     ]
+    backends = ("google", "bing", "brave", "duckduckgo", "yahoo")
+    per_job = max(20, min(60, (limit + len(variants) - 1) // len(variants)))
+    jobs = [(term, backend) for term in variants for backend in backends]
     collected, errors = [], []
-    per_query = max(20, min(80, (limit + len(variants) - 1) // len(variants)))
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = [
-            pool.submit(ddg_text, term, region, safe, per_query)
-            for term in variants
-        ]
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = {
+            pool.submit(ddg_text, term, region, safe, per_job, backend): (term, backend)
+            for term, backend in jobs
+        }
         for future in as_completed(futures):
+            term, backend = futures[future]
             try:
                 found, error = future.result()
                 collected.extend(found)
                 if error:
-                    errors.append(error)
+                    errors.append(f"{backend} ({term}): {error}")
             except Exception as exc:
-                errors.append(f"Web search task: {exc}")
+                errors.append(f"{backend} ({term}): {exc}")
     return dedupe_web(collected, query, limit), errors
 
 
@@ -306,45 +295,49 @@ def search_nasa_images(query, limit):
 
 
 def search_images(query, region, safe, limit):
-    """Merge NASA and DuckDuckGo images, prioritizing NASA source results."""
-    nasa_results, nasa_errors = search_nasa_images(query, limit)
-    ddg_results, ddg_error = ddg_images(
-        f'{query} aircraft aerospace aviation',
-        region, safe, min(1000, limit)
-    )
+    """Aircraft image discovery from NASA and general image search."""
+    nasa_results, errors = search_nasa_images(query, limit)
+    variants = [query, f"{query} aircraft", f"{query} airplane", f"{query} aviation"]
+    per_query = max(25, min(100, (limit + len(variants) - 1) // len(variants)))
+    collected = []
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(ddg_images, term, region, safe, per_query) for term in variants]
+        for future in as_completed(futures):
+            try:
+                rows, error = future.result()
+                collected.extend(rows)
+                if error:
+                    errors.append(error)
+            except Exception as exc:
+                errors.append(f"Image search: {exc}")
+
     output, seen = [], set()
     for item in nasa_results:
-        key = item.get('image') or item.get('url')
+        key = item.get("image") or item.get("url")
         if key and key not in seen:
             seen.add(key)
             output.append(item)
-    if ddg_error:
-        nasa_errors.append(ddg_error)
-    for item in ddg_results:
-        title = item.get('title') or 'Aerospace image'
-        image_url = item.get('image') or item.get('thumbnail') or item.get('url')
-        page_url = item.get('url') or image_url
+    for item in collected:
+        title = str(item.get("title") or "Aircraft image").strip()
+        image_url = item.get("image") or item.get("thumbnail") or item.get("url")
+        page_url = item.get("url") or image_url
         if not image_url:
             continue
-        if not is_aerospace_relevant(query, title, item.get('source', ''), page_url):
+        if not matches_requested_subject(query, title, f"{page_url} {item.get('source','')}"):
             continue
-        key = image_url.split('?')[0]
+        key = str(image_url).split("?")[0].lower()
         if key in seen:
             continue
         seen.add(key)
         output.append({
-            'title': title,
-            'image': image_url,
-            'thumbnail': item.get('thumbnail') or image_url,
-            'url': page_url,
-            'href': page_url,
-            'source': item.get('source') or 'DuckDuckGo Images'
+            "title": title, "image": image_url,
+            "thumbnail": item.get("thumbnail") or image_url,
+            "url": page_url, "href": page_url,
+            "source": item.get("source") or "Image search"
         })
         if len(output) >= limit:
             break
-    return output[:limit], nasa_errors
-
-
+    return output[:limit], errors
 
 
 
@@ -403,6 +396,11 @@ def search_ddg_technical_images(query, limit, errors):
                     image_url = item.get("image") or item.get("thumbnail") or item.get("url")
                     page_url = item.get("url") or image_url
                     if not image_url:
+                        continue
+                    evidence = f"{title} {page_url or ''} {item.get('source') or ''}"
+                    if not matches_requested_subject(query, title, evidence):
+                        continue
+                    if not has_drawing_evidence(title, evidence):
                         continue
                     key = str(image_url).split("?")[0].lower()
                     if key in seen:
@@ -490,9 +488,8 @@ def search_commons_drawings(query, limit):
 
                 # Match the requested aircraft, but accept common drawing
                 # captions such as "side/top/front/section" and "geometry".
-                # Wikimedia's indexed file title/caption can omit the model name.
-                # The file is still returned as a candidate because this API query
-                # was already scoped to the requested aircraft plus drawing terms.
+                if not matches_requested_subject(query, raw_title, description):
+                    continue
                 if not has_drawing_evidence(raw_title, description):
                     continue
 
@@ -546,8 +543,8 @@ def search_ntrs_drawings(query, limit):
                 evidence = f"{title} {abstract}"
                 if not title or not rid:
                     continue
-                # The NTRS query already includes the exact aircraft/model and
-                # drawing terms; NASA abstracts may not repeat the model string.
+                if not matches_requested_subject(query, title, abstract):
+                    continue
                 if not has_drawing_evidence(title, abstract):
                     continue
                 href = f"https://ntrs.nasa.gov/citations/{rid}"
@@ -780,6 +777,8 @@ def api_search():
 
     research_results, research_seen = [], set()
     for item in ntrs_results + oa_results + cr_results:
+        if not matches_requested_subject(query, item.get('title',''), item.get('body','')):
+            continue
         key = item.get('doi') or item.get('href')
         if key and key not in research_seen:
             research_seen.add(key)
