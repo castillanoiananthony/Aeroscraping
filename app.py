@@ -31,32 +31,34 @@ AERO_TERMS = {
 }
 
 DRAWING_TERMS = (
-    'three view', 'three-view', '3 view', '3-view', 'orthographic',
-    'blueprint', 'technical drawing', 'engineering drawing',
-    'airfoil', 'aerofoil', 'airfoil profile', 'airfoil section',
-    'wing planform', 'planform', 'cross section', 'cross-section',
-    'schematic', 'diagram', 'structural layout', 'spar', 'rib',
-    'fuselage frame', 'empennage', 'control surface',
-    'general arrangement', 'aircraft dimensions', 'blue print'
+    "blueprint", "blue print", "engineering plan", "original design drawing",
+    "technical drawing", "engineering drawing", "three view", "three-view",
+    "orthographic", "general arrangement", "cutaway", "cross section",
+    "cross-section", "airfoil", "aerofoil", "wing planform", "spar", "rib",
+    "fuselage frame", "stringer", "empennage", "landing gear", "schematic",
+    "exploded view", "assembly drawing", "mechanical drawing", "wiring diagram",
+    "hydraulic diagram", "structural layout", "aircraft dimensions"
 )
 
 DRAWING_QUERIES = [
-    'aircraft original engineering blueprint',
-    'aircraft detailed construction blueprint',
-    'aircraft three view orthographic drawing',
-    'aircraft general arrangement drawing',
-    'aircraft wing planform drawing',
-    'aircraft airfoil profile and coordinates',
-    'aircraft fuselage cross section drawing',
-    'aircraft wing spar rib structural blueprint',
-    'aircraft landing gear engineering drawing',
-    'aircraft engine installation schematic',
-    'aircraft flight control system drawing',
-    'aircraft empennage technical drawing',
-    'aircraft exploded assembly drawing',
-    'aircraft hydraulic system schematic',
-    'aircraft electrical wiring diagram',
-    'aircraft mechanical engineering drawing'
+    "aircraft original engineering blueprint",
+    "aircraft historical design blueprint",
+    "aircraft construction plans",
+    "aircraft three-view orthographic drawing",
+    "aircraft general arrangement drawing",
+    "aircraft cutaway drawing",
+    "aircraft exploded assembly drawing",
+    "aircraft wing planform drawing",
+    "aircraft airfoil profile and coordinates",
+    "aircraft wing spar rib structural drawing",
+    "aircraft fuselage frame and cross-section plans",
+    "aircraft empennage technical drawing",
+    "aircraft landing gear engineering drawing",
+    "aircraft engine installation schematic",
+    "aircraft flight control system drawing",
+    "aircraft hydraulic system schematic",
+    "aircraft electrical wiring diagram",
+    "aircraft mechanical engineering drawing"
 ]
 
 
@@ -327,8 +329,8 @@ def search_images(query, region, safe, limit):
         page_url = item.get("url") or image_url
         if not image_url:
             continue
-        if not matches_requested_subject(query, title, f"{page_url} {item.get('source','')}"):
-            continue
+        # The image provider already received the aircraft-specific search phrase.
+        # Captions are often incomplete, so retain candidates and label them for review.
         key = str(image_url).split("?")[0].lower()
         if key in seen:
             continue
@@ -364,26 +366,115 @@ def technical_search_terms(subject):
     return [(label, f"{subject} {terms}") for label, terms in ASE_REPORT_TOPICS]
 
 
+
+def drawing_evidence_score(title, description="", url="", source=""):
+    """Score likely technical illustrations without treating keywords as proof."""
+    text = f"{title} {description} {url} {source}".lower()
+    markers = (
+        "blueprint", "blue print", "technical drawing", "engineering drawing",
+        "three view", "three-view", "orthographic", "general arrangement",
+        "cutaway", "cross section", "cross-section", "airfoil", "aerofoil",
+        "planform", "spar", "rib", "fuselage frame", "stringer",
+        "exploded view", "schematic", "diagram", "construction plan",
+        "design drawing", "structural layout", "side view", "top view",
+        "front view", "elevation", "section view", "patent"
+    )
+    return sum(1 for marker in markers if marker in text)
+
+
+def classify_drawing(text):
+    text = str(text or "").lower()
+    labels = [
+        ("Aircraft blueprint / original design", (
+            "blueprint", "blue print", "original design", "construction plan",
+            "engineering plan", "design drawing"
+        )),
+        ("Cutaway / internal layout", ("cutaway", "internal layout", "interior structure")),
+        ("Exploded view / assembly", ("exploded", "assembly drawing", "parts breakdown")),
+        ("Three-view / orthographic", (
+            "three view", "three-view", "orthographic", "general arrangement",
+            "side view", "top view", "front view", "plan view", "elevation"
+        )),
+        ("Airfoil profile / section", ("airfoil", "aerofoil", "naca", "airfoil coordinates")),
+        ("Wing planform / geometry", ("planform", "wing geometry", "wing sweep")),
+        ("Wing internal structure", ("spar", "rib", "wing structure", "stringer")),
+        ("Fuselage cross-section / frames", (
+            "fuselage", "cross section", "cross-section", "frame", "bulkhead"
+        )),
+        ("Empennage / control surfaces", (
+            "empennage", "rudder", "elevator", "tailplane", "stabilizer"
+        )),
+        ("Landing gear / mechanical layout", ("landing gear", "undercarriage")),
+        ("Propulsion / engine installation", ("engine installation", "nacelle", "propulsion")),
+        ("Electrical / hydraulic schematic", ("wiring", "electrical", "hydraulic", "circuit")),
+        ("Aircraft technical diagram", ("diagram", "schematic", "drawing"))
+    ]
+    for label, terms in labels:
+        if any(term in text for term in terms):
+            return label
+    return "Related engineering image — verify"
+
+
+def _image_result(item, query, drawing_type=None):
+    """Normalize DDGS image results into the app's common result format."""
+    title = str(item.get("title") or "Untitled aircraft image").strip()
+    image_url = item.get("image") or item.get("thumbnail") or item.get("url")
+    page_url = item.get("url") or item.get("href") or image_url
+    if not image_url:
+        return None
+    source = str(item.get("source") or "Image search")
+    description = str(item.get("body") or item.get("description") or "")
+    score = drawing_evidence_score(title, description, page_url, source)
+    return {
+        "title": title,
+        "href": page_url,
+        "url": page_url,
+        "image": image_url,
+        "thumbnail": item.get("thumbnail") or image_url,
+        "body": description[:1800] or (
+            f"Discovered from the aircraft search '{query}'. Open the source to "
+            "confirm the aircraft variant, drawing type, dimensions, and provenance."
+        ),
+        "description": description[:1800],
+        "drawing_type": drawing_type or classify_drawing(
+            f"{title} {description} {page_url}"
+        ),
+        "category": "Technical drawing candidate — verify source",
+        "source": source,
+        "license": "Check the original source and reuse terms",
+        "relevance_score": score,
+        "verification_status": "Unverified discovery candidate"
+    }
+
+
 def search_ddg_technical_images(query, limit, errors):
     """
-    Search drawing-specific phrases for the exact requested aircraft.
-    Search engines often return valid drawings whose filenames/captions omit
-    the aircraft name, so do not reject them solely on title-token matching.
+    Broad, Google-Images-style drawing discovery.
+    Search phrases provide context; weak title captions are not automatically rejected.
     """
-    output, seen = [], set()
+    subject = query.strip()
     topic_queries = [
-        ("Three-view / orthographic", f'"{query}" aircraft three view drawing'),
-        ("General arrangement", f'"{query}" aircraft general arrangement drawing'),
-        ("Wing planform", f'"{query}" aircraft wing planform drawing'),
-        ("Airfoil / aerofoil", f'"{query}" {query} airfoil aerofoil section'),
-        ("Structural drawing", f'"{query}" aircraft wing spar rib fuselage structure drawing'),
-        ("Empennage / controls", f'"{query}" aircraft tail empennage control surface drawing'),
-        ("Landing gear", f'"{query}" aircraft landing gear technical drawing'),
-        ("Propulsion installation", f'"{query}" aircraft engine installation nacelle drawing'),
-        ("Cockpit / avionics", f'"{query}" aircraft cockpit avionics layout diagram')
+        ("Blueprints / original designs", f'{subject} aircraft original engineering blueprint'),
+        ("Historical design drawings", f'{subject} aircraft historical design drawing plans'),
+        ("Construction plans", f'{subject} aircraft construction plans engineering'),
+        ("Three-view / orthographic", f'{subject} aircraft three view orthographic drawing'),
+        ("General arrangement", f'{subject} aircraft general arrangement dimensions drawing'),
+        ("Cutaway illustrations", f'{subject} aircraft cutaway internal structure drawing'),
+        ("Wing planform", f'{subject} aircraft wing planform geometry drawing'),
+        ("Airfoil / aerofoil", f'{subject} aircraft airfoil aerofoil profile section'),
+        ("Structural blueprints", f'{subject} aircraft wing spar rib fuselage structural blueprint'),
+        ("Fuselage sections", f'{subject} aircraft fuselage frame cross section drawing'),
+        ("Empennage / controls", f'{subject} aircraft tail empennage control surface drawing'),
+        ("Landing gear", f'{subject} aircraft landing gear engineering drawing'),
+        ("Propulsion installation", f'{subject} aircraft engine nacelle installation schematic'),
+        ("Exploded assembly", f'{subject} aircraft exploded view assembly engineering drawing'),
+        ("Systems schematics", f'{subject} aircraft hydraulic electrical mechanical schematic')
     ]
+
+    output, seen = [], set()
     per_query = max(20, min(60, (limit + len(topic_queries) - 1) // len(topic_queries)))
-    with ThreadPoolExecutor(max_workers=6) as pool:
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {
             pool.submit(ddg_images, phrase, "wt-wt", "moderate", per_query): (label, phrase)
             for label, phrase in topic_queries
@@ -395,58 +486,60 @@ def search_ddg_technical_images(query, limit, errors):
                 if error:
                     errors.append(f"{label}: {error}")
                     continue
+
                 for item in items:
-                    title = str(item.get("title") or "").strip()
-                    image_url = item.get("image") or item.get("thumbnail") or item.get("url")
-                    page_url = item.get("url") or image_url
-                    if not image_url:
+                    normalized = _image_result(item, phrase, label)
+                    if not normalized:
                         continue
-                    evidence = f"{title} {page_url or ''} {item.get('source') or ''}"
-                    if not matches_requested_subject(query, title, evidence):
-                        continue
-                    if not has_drawing_evidence(title, evidence):
-                        continue
-                    key = str(image_url).split("?")[0].lower()
+
+                    key = str(normalized["image"]).split("?")[0].lower()
                     if key in seen:
                         continue
                     seen.add(key)
-                    output.append({
-                        "title": title or f"{query} — {label} search candidate",
-                        "href": page_url or image_url,
-                        "url": page_url or image_url,
-                        "image": image_url,
-                        "thumbnail": item.get("thumbnail") or image_url,
-                        "body": (
-                            f"Returned for the exact aircraft query: {phrase}. "
-                            "This is a drawing-search candidate; open the source and confirm "
-                            "aircraft variant, view, dimensions, and drawing provenance."
-                        ),
-                        "description": f"Aircraft-specific drawing search candidate: {label}.",
-                        "drawing_type": label,
-                        "category": "Technical drawing candidate — verify source",
-                        "source": item.get("source") or "Image search",
-                        "license": "Check original source and reuse terms"
-                    })
-                    if len(output) >= limit:
-                        return output[:limit]
+
+                    # Keep candidates returned by a subject-specific query even when
+                    # the image caption omits the aircraft name. The UI should label
+                    # these as candidates, not verified aircraft drawings.
+                    normalized["body"] = (
+                        f"Search category: {label}. Search phrase: {phrase}. "
+                        "This is a discovery candidate, not an authenticated blueprint. "
+                        "Open the original source and verify aircraft identity and variant."
+                    )
+                    output.append(normalized)
+
             except Exception as exc:
                 errors.append(f"{label}: {exc}")
+
+    output.sort(
+        key=lambda item: (
+            item.get("relevance_score", 0),
+            "blueprint" in item.get("drawing_type", "").lower(),
+            "NASA" in item.get("source", "")
+        ),
+        reverse=True
+    )
     return output[:limit]
 
 
 def search_commons_drawings(query, limit):
     """
-    Search Wikimedia Commons for actual aircraft technical illustrations.
-    Subject-only and topic-specific searches prevent over-constraining captions.
+    Search Wikimedia Commons broadly. Query context is used for discovery;
+    a weak filename is not enough reason to discard a candidate.
     """
     results, errors, seen = [], [], set()
     search_jobs = [
-        ("Aircraft configuration / three-view", f"{query} aircraft three-view drawing"),
-        ("Aircraft configuration / three-view", f"{query} aircraft orthographic line drawing"),
-        ("Aircraft configuration / three-view", f"{query} aircraft general arrangement drawing"),
+        ("Blueprints / original designs", f'{query} aircraft blueprint'),
+        ("Historical design drawings", f'{query} aircraft original design drawing'),
+        ("Three-view / orthographic", f'{query} aircraft three-view orthographic'),
+        ("General arrangement", f'{query} aircraft general arrangement'),
+        ("Cutaway illustrations", f'{query} aircraft cutaway'),
+        ("Wing planform", f'{query} aircraft wing planform'),
+        ("Airfoil profiles", f'{query} aircraft airfoil aerofoil'),
+        ("Structural drawings", f'{query} aircraft spar rib fuselage structure'),
+        ("Exploded assembly", f'{query} aircraft exploded assembly drawing')
     ]
     search_jobs.extend(technical_search_terms(query))
-    per_query = max(25, min(60, (limit + len(search_jobs) - 1) // len(search_jobs)))
+    per_query = max(20, min(60, (limit + len(search_jobs) - 1) // len(search_jobs)))
 
     for label, search_term in search_jobs:
         try:
@@ -481,7 +574,6 @@ def search_commons_drawings(query, limit):
                 description = BeautifulSoup(
                     description_html, "html.parser"
                 ).get_text(" ", strip=True)
-
                 page_url = info.get("descriptionurl") or (
                     "https://commons.wikimedia.org/wiki/" +
                     page.get("title", "").replace(" ", "_")
@@ -490,48 +582,53 @@ def search_commons_drawings(query, limit):
                 if not preview:
                     continue
 
-                # Match the requested aircraft, but accept common drawing
-                # captions such as "side/top/front/section" and "geometry".
-                if not matches_requested_subject(query, raw_title, description):
-                    continue
-                if not has_drawing_evidence(raw_title, description):
-                    continue
-
                 key = page_url.split("#")[0].lower()
                 if key in seen:
                     continue
                 seen.add(key)
 
+                evidence = f"{raw_title} {description} {search_term}"
                 results.append({
                     "title": raw_title,
                     "href": page_url,
                     "url": page_url,
                     "image": preview,
                     "thumbnail": preview,
-                    "body": description[:1800] or
-                            f"Aircraft-specific technical illustration found under: {label}.",
+                    "body": description[:1800] or (
+                        f"Found through Wikimedia Commons search: {search_term}. "
+                        "Confirm the aircraft variant and drawing provenance."
+                    ),
                     "description": description[:1800],
-                    "drawing_type": classify_drawing(raw_title + " " + description),
-                    "category": "Technical drawing / engineering reference",
+                    "drawing_type": classify_drawing(evidence),
+                    "category": "Technical drawing candidate — verify source",
                     "source": "Wikimedia Commons",
-                    "license": metadata.get("LicenseShortName", {}).get("value", "Check source page")
+                    "license": metadata.get("LicenseShortName", {}).get(
+                        "value", "Check source page"
+                    ),
+                    "relevance_score": drawing_evidence_score(
+                        raw_title, description, page_url, "Wikimedia Commons"
+                    ),
+                    "verification_status": "Unverified discovery candidate"
                 })
                 if len(results) >= limit:
                     return results[:limit], errors
+
         except Exception as exc:
             errors.append(f"Wikimedia Commons ({label}): {exc}")
 
+    results.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
     return results[:limit], errors
 
 
 def search_ntrs_drawings(query, limit):
-    """Find NASA-hosted engineering drawings and general-arrangement documents."""
+    """Find NASA records related to aircraft drawings and engineering plans."""
     results, errors, seen = [], [], set()
     terms = [
-        f'"{query}" aircraft general arrangement drawing',
-        f'"{query}" aircraft three view drawing',
-        f'"{query}" aircraft wing planform drawing',
-        f'"{query}" aircraft structural drawing airfoil'
+        f'{query} aircraft blueprint engineering drawing',
+        f'{query} aircraft general arrangement drawing',
+        f'{query} aircraft three view drawing',
+        f'{query} aircraft wing planform structural drawing',
+        f'{query} aircraft airfoil fuselage cutaway'
     ]
     for term in terms:
         try:
@@ -544,72 +641,78 @@ def search_ntrs_drawings(query, limit):
                 title = str(record.get("title") or "").strip()
                 abstract = str(record.get("abstract") or record.get("description") or "")
                 rid = record.get("id")
-                evidence = f"{title} {abstract}"
                 if not title or not rid:
                     continue
-                if not matches_requested_subject(query, title, abstract):
-                    continue
-                if not has_drawing_evidence(title, abstract):
-                    continue
+
                 href = f"https://ntrs.nasa.gov/citations/{rid}"
                 if href in seen:
                     continue
                 seen.add(href)
+
+                evidence = f"{title} {abstract} {term}"
                 results.append({
                     "title": title,
                     "href": href,
                     "url": href,
-                    "body": BeautifulSoup(abstract, "html.parser").get_text(" ", strip=True)[:1800],
+                    "body": BeautifulSoup(
+                        abstract, "html.parser"
+                    ).get_text(" ", strip=True)[:1800] or (
+                        "NASA technical record returned for an aircraft engineering search. "
+                        "Open the record to inspect the document."
+                    ),
                     "drawing_type": classify_drawing(evidence),
-                    "category": "NASA technical drawing / report",
+                    "category": "NASA technical report / drawing candidate",
                     "source": "NASA Technical Reports Server",
-                    "license": "Check NASA record and document rights"
+                    "license": "Check NASA record and document rights",
+                    "relevance_score": drawing_evidence_score(title, abstract, href),
+                    "verification_status": "Source record found; document content requires review"
                 })
                 if len(results) >= limit:
                     return results[:limit], errors
         except Exception as exc:
             errors.append(f"NASA drawing search: {exc}")
+
+    results.sort(key=lambda item: item.get("relevance_score", 0), reverse=True)
     return results[:limit], errors
 
 
 def search_technical_drawings(query, limit):
     """
-    Single-input drawing aggregator: automatically searches all assignment topics
-    through Wikimedia Commons and image search, then merges verified candidates.
+    Broad aircraft drawing discovery across NASA NTRS, Wikimedia Commons,
+    and DDGS image search. Results are candidates until source-verified.
     """
-    commons_results, errors = search_commons_drawings(query, limit)
-    nasa_results, nasa_errors = search_ntrs_drawings(query, limit)
+    errors = []
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        commons_future = pool.submit(search_commons_drawings, query, limit)
+        nasa_future = pool.submit(search_ntrs_drawings, query, limit)
+        image_future = pool.submit(search_ddg_technical_images, query, limit, errors)
+
+        commons_results, commons_errors = commons_future.result()
+        nasa_results, nasa_errors = nasa_future.result()
+        image_results = image_future.result()
+
+    errors.extend(commons_errors)
     errors.extend(nasa_errors)
-    image_results = search_ddg_technical_images(query, limit, errors)
 
     merged, seen = [], set()
-    # Prefer actual archival/NASA engineering drawings, then Commons and image-search results.
-    for item in nasa_results + commons_results + image_results:
+    # Mix archival records and image-search candidates; prioritize visual drawings.
+    for item in commons_results + image_results + nasa_results:
         key = (item.get("href") or item.get("image") or "").split("#")[0].lower()
         if not key or key in seen:
             continue
         seen.add(key)
         merged.append(item)
-        if len(merged) >= limit:
-            break
 
-    return merged, errors
+    merged.sort(
+        key=lambda item: (
+            item.get("relevance_score", 0),
+            bool(item.get("image")),
+            "blueprint" in item.get("drawing_type", "").lower()
+        ),
+        reverse=True
+    )
+    return merged[:limit], errors
 
-def classify_drawing(text):
-    text = text.lower()
-    labels = [
-        ('Three-view / orthographic', ('three view', 'three-view', 'orthographic', 'general arrangement', 'side view', 'top view', 'front view', 'plan view', 'geometry')),
-        ('Airfoil profile / section', ('airfoil', 'aerofoil', 'naca')),
-        ('Wing planform / geometry', ('planform', 'wing geometry')),
-        ('Wing internal structure', ('spar', 'rib', 'wing structure')),
-        ('Fuselage cross-section', ('fuselage', 'cross section', 'cross-section', 'frame')),
-        ('Empennage / control surfaces', ('empennage', 'rudder', 'elevator', 'tailplane')),
-        ('Aircraft technical diagram', ('diagram', 'schematic', 'blueprint', 'drawing'))
-    ]
-    for label, terms in labels:
-        if any(term in text for term in terms):
-            return label
-    return 'Aircraft engineering reference'
 
 
 def search_ntrs(query, limit):
