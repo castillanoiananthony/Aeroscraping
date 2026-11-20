@@ -37,22 +37,26 @@ DRAWING_TERMS = (
     'wing planform', 'planform', 'cross section', 'cross-section',
     'schematic', 'diagram', 'structural layout', 'spar', 'rib',
     'fuselage frame', 'empennage', 'control surface',
-    'general arrangement', 'aircraft dimensions'
+    'general arrangement', 'aircraft dimensions', 'blue print'
 )
 
 DRAWING_QUERIES = [
-    'aircraft three view drawing',
-    'airplane three view orthographic drawing',
+    'aircraft original engineering blueprint',
+    'aircraft detailed construction blueprint',
+    'aircraft three view orthographic drawing',
     'aircraft general arrangement drawing',
-    'aircraft technical blueprint',
-    'airfoil profile diagram',
-    'NACA airfoil section coordinates',
     'aircraft wing planform drawing',
-    'aircraft wing spar rib structure',
+    'aircraft airfoil profile and coordinates',
     'aircraft fuselage cross section drawing',
-    'aircraft empennage control surfaces drawing',
-    'aircraft engineering schematic',
-    'aircraft structural diagram'
+    'aircraft wing spar rib structural blueprint',
+    'aircraft landing gear engineering drawing',
+    'aircraft engine installation schematic',
+    'aircraft flight control system drawing',
+    'aircraft empennage technical drawing',
+    'aircraft exploded assembly drawing',
+    'aircraft hydraulic system schematic',
+    'aircraft electrical wiring diagram',
+    'aircraft mechanical engineering drawing'
 ]
 
 
