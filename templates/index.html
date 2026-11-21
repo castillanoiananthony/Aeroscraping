@@ -7,7 +7,7 @@
   <meta name="description" content="Aeroscraping — aerospace aircraft research, drawings, airfoil references and aircraft data.">
   <title>Aeroscraping</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='assets/plane.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261119-8') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261121-1') }}">
 </head>
 <body>
 <div id="searchLoader" class="search-loader" hidden aria-live="polite"><div class="turbine"><span></span><span></span><span></span><span></span><span></span><span></span></div><p>Searching aerospace references…</p></div>
@@ -63,7 +63,7 @@
       <h2>Search efficiently</h2>
       <ul>
         <li>Use the full aircraft name or model, such as <b>Airbus A350-900</b>.</li>
-        <li>Use a variant when possible: <b>F-16C</b>, not just F-16.</li>
+        <li>Any aircraft works: <b>F-16</b>, <b>Cessna 172</b>, <b>747</b> or a nickname like <b>Warthog</b>. Aeroscraping identifies the exact aircraft first and filters every tab to it.</li>
         <li>For drawings, search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
         <li>Try engineering terms such as <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> if you need a focused follow-up.</li>
         <li>Check the source page, publication date, variant, and units before citing.</li>
@@ -118,6 +118,6 @@
     <footer class="footer">Aeroscraping · Developed by Ian Anthony H. Castillano</footer>
   </main>
 </div>
-<script src="{{ url_for('static', filename='js/app.js', v='20261119-8') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js', v='20261121-1') }}"></script>
 </body>
 </html>

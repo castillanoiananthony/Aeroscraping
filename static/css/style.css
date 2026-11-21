@@ -194,3 +194,16 @@
 .source-link{color:#e58a96!important}
 .dataset-unavailable{border-color:var(--accent);background:#241c1e;color:#e6dadd}
 .result-card h3 a{color:#e58a96}
+
+/* Wikipedia overview + specification table (Plane Information tab) */
+.wiki-head{display:flex;gap:20px;align-items:flex-start}
+.wiki-thumb{width:min(320px,40%);max-height:240px;object-fit:cover;border-radius:10px;border:1px solid var(--line);background:#2b2926;flex-shrink:0}
+.wiki-text{min-width:0}
+.spec-heading{font-size:18px;margin:24px 0 4px}
+.spec-group{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#c6a87c;margin:18px 0 8px}
+.spec-table{display:grid;grid-template-columns:minmax(140px,220px) minmax(0,1fr);margin:0;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.spec-table dt,.spec-table dd{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);line-height:1.5;overflow-wrap:anywhere}
+.spec-table dt{color:var(--muted);background:#292623}
+.spec-table dd{color:#e3dfda}
+.spec-table dt:nth-last-of-type(1),.spec-table dd:last-of-type{border-bottom:0}
+@media(max-width:640px){.wiki-head{flex-direction:column}.wiki-thumb{width:100%;max-height:200px}.spec-table{grid-template-columns:1fr}.spec-table dt{border-bottom:0;padding-bottom:2px}.spec-table dd{padding-top:2px}}

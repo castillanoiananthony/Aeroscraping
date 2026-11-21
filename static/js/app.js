@@ -80,7 +80,8 @@ function imageCard(item,index) {
     const img=document.createElement('img');img.src=image;img.alt=item.title||`Image ${index+1}`;img.loading='lazy';img.onerror=()=>img.remove();link.append(img);card.append(link);
   }
   card.append(el('p','',item.title||`Image result ${index+1}`));
-  if(item.source) card.append(el('small','image-source',item.source));
+  const credit=[item.source,item.license].filter(Boolean).join(' · ');
+  if(credit) card.append(el('small','image-source',credit));
   return card;
 }
 function fillPanel(id,items,kind){
@@ -148,16 +149,42 @@ $('aircraftSelect').addEventListener('change',event=>{
 function infoValue(value,unit=''){
   return value===null||value===undefined||value===''?'Not listed in current dataset':`${value}${unit}`;
 }
+function wikipediaCard(w){
+  const card=el('section','plane-info-card wiki-card');
+  card.append(el('div','category-label',`Encyclopedia overview${w.description?' · '+w.description:''}`));
+  const head=el('div','wiki-head');
+  const thumb=safeUrl(w.thumbnail||'');
+  if(thumb){const img=document.createElement('img');img.className='wiki-thumb';img.src=thumb;img.alt=w.title;img.loading='lazy';img.onerror=()=>img.remove();head.append(img);}
+  const text=el('div','wiki-text');
+  text.append(el('h2','',w.title));
+  if(w.extract)text.append(el('p','result-summary',w.extract));
+  const links=el('div','source-links');addLink(links,'Read the full Wikipedia article',w.url);text.append(links);
+  head.append(text);card.append(head);
+  const groups=(w.specs&&w.specs.groups)||[];
+  if(groups.length){
+    card.append(el('h3','spec-heading',w.specs.heading||'Specifications'));
+    groups.forEach(g=>{
+      card.append(el('h4','spec-group',g.name));
+      const table=el('dl','spec-table');
+      g.rows.forEach(r=>{table.append(el('dt','',r.label),el('dd','',r.value));});
+      card.append(table);
+    });
+    card.append(el('p','source-disclaimer','Specifications as published in the article’s Specifications section (usually one variant). Follow the article’s cited references before formal use.'));
+  }
+  return card;
+}
 async function renderPlaneInfo(query){
-  const panel=$('panel-plane');panel.replaceChildren(el('div','loading','Loading aircraft dataset record…'));
+  const panel=$('panel-plane');panel.replaceChildren(el('div','loading','Loading aircraft information…'));
   try{
     const response=await fetch(`/api/aircraft/lookup?query=${encodeURIComponent(query)}`);
     const result=await response.json();panel.replaceChildren();
     if(!response.ok||!result.available){
-      panel.append(el('div','dataset-unavailable',`“${query}” is not available in the current Aeroscraping aircraft dataset. Choose a listed aircraft from the search suggestions. The web and drawing search can still search other aircraft, but curated aircraft specifications are only shown for listed models.`));
+      panel.append(el('div','dataset-unavailable',result.message||`“${query}” could not be identified as an aircraft.`));
       return;
     }
+    if(result.wikipedia)panel.append(wikipediaCard(result.wikipedia));
     const a=result.aircraft;
+    if(!a)return;
     const card=el('section','plane-info-card');
     card.append(el('div','category-label',`${a.manufacturer} · ${a.category}`));
     card.append(el('h2','',a.name));
@@ -222,8 +249,12 @@ $('searchForm').addEventListener('submit',async event=>{
     const data=await response.json();if(!response.ok)throw new Error(data.error||'Search request failed.');
     const web=data.web_results||[],research=data.research_results||[],images=data.image_results||[],drawings=data.drawing_results||[];
     searchHasAnyResults=[web,research,images,drawings].some(group=>group.length>0);
-    $('resultsTitle').textContent=`Search results for: ${data.query}`;
-    $('resultsCounts').textContent=`${web.length} web sources · ${research.length} research/report leads · ${images.length} images · ${drawings.length} technical drawing references`;
+    $('resultsTitle').textContent=data.aircraft
+      ?`Search results for: ${data.aircraft.title}`
+      :`Search results for: ${data.query}`;
+    $('resultsCounts').textContent=(data.aircraft&&data.aircraft.title.toLowerCase()!==data.query.toLowerCase()?`Identified “${data.query}” as ${data.aircraft.title}. `:'')
+      +(data.aircraft?'':'No specific aircraft was identified, so results are matched on your search words. ')
+      +`${web.length} web sources · ${research.length} research/report leads · ${images.length} images · ${drawings.length} technical drawing references`;
     $('webCount').textContent=web.length;$('researchCount').textContent=research.length;$('imageCount').textContent=images.length;$('drawingCount').textContent=drawings.length;
     fillPanel('panel-web',web,'General web');fillPanel('panel-research',research,'Research & reports');fillPanel('panel-images',images,'images');fillPanel('panel-drawings',drawings,'Technical drawings');
     await Promise.all([renderAirfoil(query),renderPlaneInfo(query)]);

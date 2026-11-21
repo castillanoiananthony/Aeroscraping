@@ -6,123 +6,106 @@ import requests
 import re
 import json
 import ipaddress
+import os
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from itertools import zip_longest
+
+import aircraft_identity as ident
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
+# Wikimedia, OpenAlex and Crossref ask API clients to identify themselves with
+# a contact. Set AEROSCRAPING_CONTACT (an email or URL) in the host's
+# environment, e.g. Render > Environment, instead of hard-coding it here.
+_CONTACT = os.environ.get('AEROSCRAPING_CONTACT', '').strip()
 SESSION = requests.Session()
 SESSION.headers.update({
-    'User-Agent': 'Aeroscraping/3.0 (aerospace research discovery; contact: castillano.iananthony.h@gmail.com)'
+    'User-Agent': 'Aeroscraping/3.0 (aerospace research discovery'
+                  + (f'; contact: {_CONTACT}' if _CONTACT else '') + ')'
 })
 TIMEOUT = 25
+ident.SESSION = SESSION  # Wikimedia requests use the same identified client
 
-AERO_TERMS = {
-    'aircraft', 'aerospace', 'aviation', 'airplane', 'aerodynamics',
-    'airfoil', 'wing', 'fuselage', 'propulsion', 'engine', 'avionics',
-    'flight', 'airframe', 'helicopter', 'rotorcraft', 'jet', 'turbofan',
-    'turboprop', 'supersonic', 'subsonic', 'transonic', 'fighter',
-    'bomber', 'airliner', 'glider', 'uav', 'drone', 'landing gear',
-    'empennage', 'flap', 'slat', 'spoiler', 'aileron', 'rudder',
-    'elevator', 'stability', 'control', 'airfoil coordinates',
-    'aircraft structure', 'aircraft design'
-}
-
-DRAWING_TERMS = (
-    'three view', 'three-view', '3 view', '3-view', 'orthographic',
-    'blueprint', 'technical drawing', 'engineering drawing',
-    'airfoil', 'aerofoil', 'airfoil profile', 'airfoil section',
-    'wing planform', 'planform', 'cross section', 'cross-section',
-    'schematic', 'diagram', 'structural layout', 'spar', 'rib',
-    'fuselage frame', 'empennage', 'control surface',
-    'general arrangement', 'aircraft dimensions', 'blue print'
+# Shops, print-on-demand and pin boards: they rarely describe the aircraft and
+# their "drawings" are posters, so they are dropped from every result type.
+LOW_QUALITY_DOMAINS = (
+    'pinterest.', 'pixels.com', 'fineartamerica.', 'redbubble.', 'etsy.',
+    'ebay.', 'amazon.', 'aliexpress.', 'alibaba.', 'walmart.', 'temu.',
+    'trade-a-plane.', 'controller.com', 'aircraftforsale', 'globalplanesearch',
+    'chegg.', 'coursehero.', 'scribd.', 'dreamstime.', 'shutterstock.',
+    'alamy.', 'gettyimages.', 'istockphoto.', 'depositphotos.', '123rf.',
+    'vecteezy.', 'freepik.', 'grokipedia.', 'quora.', 'tiktok.', 'facebook.',
+    'instagram.', 'youtube.', 'x.com', 'twitter.', 'quizlet.',
+    'allwiringsketch.', 'circuitblaze.', 'eleccircs.', 'wirecrafted.',
+    'wiringall.', 'wiringdiagram', 'schematron.'
 )
 
-DRAWING_QUERIES = [
-    'aircraft original engineering blueprint',
-    'aircraft detailed construction blueprint',
-    'aircraft three view orthographic drawing',
-    'aircraft general arrangement drawing',
-    'aircraft wing planform drawing',
-    'aircraft airfoil profile and coordinates',
-    'aircraft fuselage cross section drawing',
-    'aircraft wing spar rib structural blueprint',
-    'aircraft landing gear engineering drawing',
-    'aircraft engine installation schematic',
-    'aircraft flight control system drawing',
-    'aircraft empennage technical drawing',
-    'aircraft exploded assembly drawing',
-    'aircraft hydraulic system schematic',
-    'aircraft electrical wiring diagram',
-    'aircraft mechanical engineering drawing'
-]
+# Reference, government, manufacturer and established aviation publishers rank
+# first in the web tab.
+TRUSTED_DOMAINS = (
+    'wikipedia.org', 'nasa.gov', 'faa.gov', 'easa.europa.eu', 'af.mil',
+    'navy.mil', 'army.mil', 'defense.gov', 'airandspace.si.edu', 'si.edu',
+    'britannica.com', 'boeing.com', 'airbus.com', 'lockheedmartin.com',
+    'northropgrumman.com', 'dassault-aviation.com', 'saab.com', 'embraer.com',
+    'txtav.com', 'cessna.', 'gulfstream.com', 'bombardier.com', 'ga-asi.com',
+    'baesystems.com', 'leonardo.com', 'flightglobal.com', 'aerosociety.com',
+    'aiaa.org', 'airandspaceforces.com', 'aviationweek.com', 'janes.com',
+    'globalsecurity.org', 'militaryfactory.com', 'aopa.org', 'skybrary.aero',
+    'f-16.net', 'nationalmuseum.af.mil', 'iwm.org.uk', 'rafmuseum.org.uk'
+)
 
 
-def norm(value):
-    return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
+# Classified-ad and price-listing pages.
+LISTING_TITLE = re.compile(r'\bfor sale\b|\bprice[sd]?\b.*\bavailable\b|\bbuy now\b', re.I)
+
+# Image-search "drawings" from SEO content farms ("wiring diagram" sites) use
+# generic words like diagram/schematic/guide. Image-search candidates must
+# carry a real drawing term instead.
+STRONG_DRAWING_TERMS = re.compile(
+    r'three[\s-]?view|3[\s-]?view|blueprint|line drawing|line art|'
+    r'general arrangement|orthographic|planform|cross[\s-]?section|'
+    r'cutaway|cut-away|airfoil|aerofoil|2d drawing|scale drawing|'
+    r'technical drawing|engineering drawing|side view|top view',
+    re.I
+)
+SEO_DRAWING_TITLE = re.compile(
+    r'wiring|everything you need|a visual guide|understanding|exploring|'
+    r'complete .* guide|must-have|how to|explained|parts diagram',
+    re.I
+)
 
 
-def tokens(value):
-    return [
-        token for token in re.findall(r'[a-z0-9]+', str(value or '').lower())
-        if len(token) > 1
-    ]
+def domain_of(url):
+    try:
+        return (urlparse(url).hostname or '').lower()
+    except ValueError:
+        return ''
 
 
-def query_tokens(query):
-    excluded = {
-        'the', 'and', 'for', 'with', 'about', 'aircraft',
-        'airplane', 'aerospace', 'aviation', 'information', 'research'
-    }
-    return [token for token in tokens(query) if token not in excluded]
+def _host_hits(host, entry):
+    """Match on whole domain labels so 'x.com' does not match 'dropbox.com'."""
+    labels = '.' + host + '.'
+    if entry.endswith('.'):           # brand prefix, e.g. 'pinterest.'
+        return '.' + entry in labels
+    return labels.endswith('.' + entry + '.') or ('.' + entry) in labels
 
 
-def query_match_score(query, text):
-    query_words = query_tokens(query)
-    text_words = set(tokens(text))
-    if not query_words:
-        return 0.0
-    compact_query = norm(query)
-    compact_text = norm(text)
-    if len(compact_query) >= 3 and compact_query in compact_text:
-        return 1.0
-    hits = sum(
-        1 for word in query_words
-        if word in text_words or word in compact_text
-    )
-    return hits / len(query_words)
+def is_low_quality(url):
+    host = domain_of(url)
+    return any(_host_hits(host, bad) for bad in LOW_QUALITY_DOMAINS)
 
 
-def specific_query_terms(query):
-    generic = {
-        'aircraft', 'airplane', 'aerospace', 'aviation', 'technical',
-        'drawing', 'drawings', 'diagram', 'diagrams', 'engineering',
-        'design', 'image', 'images', 'photo', 'photos', 'the', 'and',
-        'for', 'with', 'of', 'view', 'views', 'three'
-    }
-    return [t for t in tokens(query) if t not in generic]
+def is_trusted(url):
+    host = domain_of(url)
+    return any(_host_hits(host, good) for good in TRUSTED_DOMAINS)
 
 
-def matches_requested_subject(query, title, description=''):
-    """
-    Strictly require the requested subject in the file title/caption.
-    This prevents a generic aircraft document from appearing for Concorde.
-    """
-    terms = specific_query_terms(query)
-    if not terms:
-        return False
-    text = f'{title} {description}'.lower()
-    text_norm = norm(text)
-    matched = sum(
-        1 for term in terms
-        if term in tokens(text) or norm(term) in text_norm
-    )
-    # One-word aircraft names (e.g. Concorde) must match exactly.
-    if len(terms) == 1:
-        return matched == 1
-    return matched >= max(1, (len(terms) + 1) // 2)
+# Subject matching lives in aircraft_identity.SubjectMatcher: it matches the
+# identified aircraft's names/designations ("F-16", "F16", "F-16C") without
+# matching unrelated text that merely contains "16".
 
 
 def has_drawing_evidence(title, description, filename=''):
@@ -143,22 +126,17 @@ def has_drawing_evidence(title, description, filename=''):
     return any(marker in text for marker in drawing_markers)
 
 
-def is_aerospace_relevant(query, title, body='', url=''):
-    blob = f'{title} {body} {url}'.lower()
-    qscore = query_match_score(query, blob)
-    aero_hits = sum(1 for term in AERO_TERMS if term in blob)
-    # A strong match to the requested aircraft/topic is sufficient.
-    return qscore >= 0.34 or (qscore >= 0.20 and aero_hits >= 1)
-
-
 def get_json(url, params=None, timeout=TIMEOUT):
-    response = SESSION.get(url, params=params, timeout=timeout)
-    response.raise_for_status()
-    return response.json()
+    # Retries briefly on HTTP 429/5xx (Wikimedia and NTRS rate-limit bursts).
+    return ident._get(url, params=params, timeout=timeout)
 
 
 def ddg_text(query, region, safe, limit, backend="duckduckgo"):
     """Query one supported DDGS text backend; caller merges provider results."""
+    # ddgs 9.x bug: with region "wt-wt" the google/bing backends also query
+    # https://wt.wikipedia.org (which does not exist) and the whole call fails.
+    if region == "wt-wt":
+        region = "us-en"
     try:
         with DDGS() as ddgs:
             rows = list(ddgs.text(
@@ -182,68 +160,80 @@ def ddg_images(query, region, safe, limit):
         return [], f"Image search: {exc}"
 
 
-def dedupe_web(items, query, limit):
-    """Keep broad search-engine matches; discard only empty, duplicate and obvious junk."""
-    seen, output = set(), []
-    blocked = (
-        "phonics song", "lyrics", "music video", "letter a song",
-        "word search", "crossword", "pinterest login"
-    )
-    for item in items:
+def dedupe_web(items, matcher, limit):
+    """
+    Keep only pages that name the requested aircraft, drop shops/pin boards,
+    and rank reference/government/manufacturer sources first.
+    """
+    seen, kept = set(), []
+    for order, item in enumerate(items):
         title = str(item.get("title") or "").strip()
         url = str(item.get("href") or item.get("url") or "").strip()
         body = str(item.get("body") or item.get("snippet") or "").strip()
-        if not title or not url or not url.startswith(("http://", "https://")):
+        if not title or not url.startswith(("http://", "https://")):
             continue
-        blob = f"{title} {body} {url}".lower()
-        if any(term in blob for term in blocked):
+        if is_low_quality(url) or LISTING_TITLE.search(title):
+            continue
+        host = domain_of(url)
+        if host.endswith('wikipedia.org') and not host.startswith(('en.', 'en.m.')):
+            continue  # other-language copies of the same article
+        strength = matcher.strength(title, f"{body} {url}")
+        if strength == 0:
             continue
         key = url.split("#")[0].rstrip("/").lower()
         if key in seen:
             continue
         seen.add(key)
-        output.append({**item, "title": title, "href": url, "body": body})
-        if len(output) >= limit:
-            break
-    return output
+        score = strength * 2 + (3 if is_trusted(url) else 0)
+        kept.append((-score, order, {**item, "title": title, "href": url, "body": body}))
+    kept.sort(key=lambda row: (row[0], row[1]))
+    return [row[2] for row in kept[:limit]]
 
 
-def search_web(query, region, safe, limit):
-    """Broad general web discovery; no aerospace keyword whitelist."""
+# DuckDuckGo's and Brave's text backends return "No results found" for most
+# requests from servers, so only the backends that answer are queried.
+WEB_BACKENDS = ("google", "bing", "yahoo")
+
+
+def search_web(search_name, matcher, region, safe, limit):
+    """General web discovery for one identified aircraft or topic."""
     variants = [
-        query, f'"{query}"', f'{query} aircraft', f'{query} airplane',
-        f'{query} specifications', f'{query} technical data',
-        f'{query} dimensions', f'{query} manual OR report OR thesis'
+        search_name, f'"{search_name}" aircraft',
+        f'"{search_name}" specifications', f'"{search_name}" development history',
+        f'"{search_name}" design technical report'
     ]
-    backends = ("google", "bing", "brave", "duckduckgo", "yahoo")
-    per_job = max(20, min(60, (limit + len(variants) - 1) // len(variants)))
-    jobs = [(term, backend) for term in variants for backend in backends]
+    per_job = max(20, min(50, (limit + len(variants) - 1) // len(variants)))
+    jobs = [(term, backend) for term in variants for backend in WEB_BACKENDS]
     collected, errors = [], []
-    with ThreadPoolExecutor(max_workers=16) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         futures = {
             pool.submit(ddg_text, term, region, safe, per_job, backend): (term, backend)
             for term, backend in jobs
         }
+        # Keep results in job order so the first variant's ranking leads.
+        by_job = {}
         for future in as_completed(futures):
             term, backend = futures[future]
             try:
                 found, error = future.result()
-                collected.extend(found)
-                if error:
+                by_job[(term, backend)] = found
+                if error and 'No results found' not in error:
                     errors.append(f"{backend} ({term}): {error}")
             except Exception as exc:
                 errors.append(f"{backend} ({term}): {exc}")
-    return dedupe_web(collected, query, limit), errors
+    for job in jobs:
+        collected.extend(by_job.get(job, []))
+    return dedupe_web(collected, matcher, limit), errors
 
 
-def search_nasa_images(query, limit):
-    """Search NASA's public Image and Video Library; no API key required."""
+def search_nasa_images(search_name, matcher, limit):
+    """
+    Search NASA's public Image and Video Library; no API key required.
+    The aircraft must be named in the image *title* — NASA descriptions often
+    mention an aircraft only in passing (e.g. a chase plane at a launch).
+    """
     results, errors, seen = [], [], set()
-    queries = [
-        f'{query} aircraft',
-        f'{query} airplane',
-        f'{query} aviation'
-    ]
+    queries = [f'"{search_name}"', f'{search_name} aircraft']
     per_query = max(30, min(100, (limit + len(queries) - 1) // len(queries)))
     for term in queries:
         try:
@@ -270,19 +260,21 @@ def search_nasa_images(query, limit):
                 )
                 if not image_url:
                     continue
-                if not matches_requested_subject(query, title, description):
+                if not matcher.matches(title):
                     continue
                 key = nasa_id or image_url
                 if key in seen:
                     continue
                 seen.add(key)
+                # item['href'] is the raw collection.json manifest, not a page.
+                page_url = (f'https://images.nasa.gov/details/{nasa_id}'
+                            if nasa_id else image_url)
                 results.append({
                     'title': title,
                     'image': image_url,
                     'thumbnail': image_url,
-                    'url': item.get('href') or
-                           (f'https://images.nasa.gov/details/{nasa_id}' if nasa_id else image_url),
-                    'href': item.get('href') or image_url,
+                    'url': page_url,
+                    'href': page_url,
                     'source': 'NASA Image and Video Library',
                     'description': BeautifulSoup(
                         description, 'html.parser'
@@ -298,36 +290,56 @@ def search_nasa_images(query, limit):
     return results[:limit], errors
 
 
-def search_images(query, region, safe, limit):
-    """Aircraft image discovery from NASA and general image search."""
-    nasa_results, errors = search_nasa_images(query, limit)
-    variants = [query, f"{query} aircraft", f"{query} airplane", f"{query} aviation"]
-    per_query = max(25, min(100, (limit + len(variants) - 1) // len(variants)))
-    collected = []
+def search_images(search_name, matcher, identity, region, safe, limit):
+    """
+    Aircraft photographs, most reliable first:
+      1. photos placed in the aircraft's Wikipedia article by its editors,
+      2. the aircraft's own Wikimedia Commons category,
+      3. NASA images whose title names the aircraft,
+      4. general image search whose title names the aircraft.
+    """
+    errors, curated = [], []
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(ddg_images, term, region, safe, per_query) for term in variants]
-        for future in as_completed(futures):
-            try:
-                rows, error = future.result()
-                collected.extend(rows)
-                if error:
-                    errors.append(error)
-            except Exception as exc:
-                errors.append(f"Image search: {exc}")
+        nasa_future = pool.submit(search_nasa_images, search_name, matcher, limit)
+        ddg_futures = [
+            pool.submit(ddg_images, term, region, safe, 60)
+            for term in (f'"{search_name}"', f'{search_name} aircraft')
+        ]
+        if identity:
+            article_future = pool.submit(ident.article_photos, identity['title'])
+            category_future = pool.submit(ident.category_photos, identity.get('qid'))
+            # Articles also show rivals/predecessors (an AH-56 in the A-10
+            # article), so article photos must name the aircraft in their
+            # caption. Everything in the aircraft's own Commons category is
+            # that aircraft.
+            curated = [p for p in article_future.result()
+                       if matcher.matches(p['title'], p.get('description', ''))]
+            curated += category_future.result()
+        nasa_results, nasa_errors = nasa_future.result()
+        errors.extend(nasa_errors)
+        collected = []
+        for future in ddg_futures:
+            rows, error = future.result()
+            collected.extend(rows)
+            if error:
+                errors.append(error)
 
     output, seen = [], set()
-    for item in nasa_results:
-        key = item.get("image") or item.get("url")
+    for item in curated + nasa_results:
+        key = str(item.get("image") or item.get("url") or "").split("?")[0].lower()
         if key and key not in seen:
             seen.add(key)
             output.append(item)
     for item in collected:
-        title = str(item.get("title") or "Aircraft image").strip()
+        title = str(item.get("title") or "").strip()
         image_url = item.get("image") or item.get("thumbnail") or item.get("url")
         page_url = item.get("url") or image_url
-        if not image_url:
+        if not image_url or not title:
             continue
-        if not matches_requested_subject(query, title, f"{page_url} {item.get('source','')}"):
+        if is_low_quality(page_url) or is_low_quality(image_url):
+            continue
+        # Title only: page URLs/sources name the site, not the pictured aircraft.
+        if not matcher.matches(title):
             continue
         key = str(image_url).split("?")[0].lower()
         if key in seen:
@@ -364,7 +376,7 @@ def technical_search_terms(subject):
     return [(label, f"{subject} {terms}") for label, terms in ASE_REPORT_TOPICS]
 
 
-def search_ddg_technical_images(query, limit, errors):
+def search_ddg_technical_images(query, matcher, limit, errors):
     """
     Search drawing-specific phrases for the exact requested aircraft.
     Search engines often return valid drawings whose filenames/captions omit
@@ -399,12 +411,16 @@ def search_ddg_technical_images(query, limit, errors):
                     title = str(item.get("title") or "").strip()
                     image_url = item.get("image") or item.get("thumbnail") or item.get("url")
                     page_url = item.get("url") or image_url
-                    if not image_url:
+                    if not image_url or not title:
+                        continue
+                    if is_low_quality(page_url) or is_low_quality(image_url):
                         continue
                     evidence = f"{title} {page_url or ''} {item.get('source') or ''}"
-                    if not matches_requested_subject(query, title, evidence):
+                    if not matcher.matches(title):
                         continue
-                    if not has_drawing_evidence(title, evidence):
+                    if SEO_DRAWING_TITLE.search(title):
+                        continue
+                    if not STRONG_DRAWING_TERMS.search(evidence):
                         continue
                     key = str(image_url).split("?")[0].lower()
                     if key in seen:
@@ -434,19 +450,27 @@ def search_ddg_technical_images(query, limit, errors):
     return output[:limit]
 
 
-def search_commons_drawings(query, limit):
+def search_commons_drawings(query, matcher, limit):
     """
     Search Wikimedia Commons for actual aircraft technical illustrations.
     Subject-only and topic-specific searches prevent over-constraining captions.
     """
     results, errors, seen = [], [], set()
+    # Four grouped OR-queries cover every ASE 111 report topic. (Thirteen
+    # separate queries per search got the app rate-limited by Commons.)
+    subject = f'"{query}"'
     search_jobs = [
-        ("Aircraft configuration / three-view", f"{query} aircraft three-view drawing"),
-        ("Aircraft configuration / three-view", f"{query} aircraft orthographic line drawing"),
-        ("Aircraft configuration / three-view", f"{query} aircraft general arrangement drawing"),
+        ("Aircraft configuration / three-view",
+         f'{subject} (3-view OR three-view OR orthographic OR "line drawing" OR "general arrangement" OR silhouette)'),
+        ("Structure / cutaway",
+         f'{subject} (cutaway OR blueprint OR schematic OR diagram OR "cross section" OR spar OR rib)'),
+        ("Wing / airfoil / empennage",
+         f'{subject} (planform OR airfoil OR aerofoil OR empennage OR tailplane OR flap OR slat) (drawing OR diagram OR profile)'),
+        ("Systems / cockpit / landing gear",
+         f'{subject} (cockpit OR "landing gear" OR engine OR nacelle OR "flight control") (diagram OR drawing OR layout OR schematic)'),
     ]
-    search_jobs.extend(technical_search_terms(query))
-    per_query = max(25, min(60, (limit + len(search_jobs) - 1) // len(search_jobs)))
+    per_query = 50
+    seen_titles = set()
 
     for label, search_term in search_jobs:
         try:
@@ -455,17 +479,20 @@ def search_commons_drawings(query, limit):
                 {
                     "action": "query",
                     "format": "json",
+                    "formatversion": 2,
                     "generator": "search",
                     "gsrsearch": search_term,
                     "gsrnamespace": 6,
                     "gsrlimit": per_query,
                     "prop": "imageinfo",
                     "iiprop": "url|mime|extmetadata",
+                    "iiextmetadatafilter": "ImageDescription|LicenseShortName",
                     "iiurlwidth": 1400
                 }
             )
-            pages = (data.get("query") or {}).get("pages") or {}
-            for page in pages.values():
+            pages = sorted((data.get("query") or {}).get("pages") or [],
+                           key=lambda p: p.get("index", 999))
+            for page in pages:
                 raw_title = page.get("title", "").replace("File:", "")
                 info = (page.get("imageinfo") or [{}])[0]
                 mime = (info.get("mime") or "").lower()
@@ -492,15 +519,19 @@ def search_commons_drawings(query, limit):
 
                 # Match the requested aircraft, but accept common drawing
                 # captions such as "side/top/front/section" and "geometry".
-                if not matches_requested_subject(query, raw_title, description):
+                if not matcher.matches(raw_title, description):
                     continue
                 if not has_drawing_evidence(raw_title, description):
                     continue
 
                 key = page_url.split("#")[0].lower()
-                if key in seen:
+                # Same drawing uploaded as .png/.svg/.gif or with archive IDs.
+                title_key = re.sub(r'\.(png|svg|gif|jpe?g|tiff?|webp)$', '', raw_title.lower())
+                title_key = re.sub(r'[^a-z0-9]+', '', title_key)
+                if key in seen or title_key in seen_titles:
                     continue
                 seen.add(key)
+                seen_titles.add(title_key)
 
                 results.append({
                     "title": raw_title,
@@ -524,7 +555,7 @@ def search_commons_drawings(query, limit):
     return results[:limit], errors
 
 
-def search_ntrs_drawings(query, limit):
+def search_ntrs_drawings(query, matcher, limit):
     """Find NASA-hosted engineering drawings and general-arrangement documents."""
     results, errors, seen = [], [], set()
     terms = [
@@ -547,7 +578,7 @@ def search_ntrs_drawings(query, limit):
                 evidence = f"{title} {abstract}"
                 if not title or not rid:
                     continue
-                if not matches_requested_subject(query, title, abstract):
+                if not matcher.matches(title, abstract):
                     continue
                 if not has_drawing_evidence(title, abstract):
                     continue
@@ -572,19 +603,29 @@ def search_ntrs_drawings(query, limit):
     return results[:limit], errors
 
 
-def search_technical_drawings(query, limit):
+def search_technical_drawings(query, matcher, limit):
     """
     Single-input drawing aggregator: automatically searches all assignment topics
-    through Wikimedia Commons and image search, then merges verified candidates.
+    through Wikimedia Commons, NASA NTRS and image search, then merges verified
+    candidates. The three sources run in parallel.
     """
-    commons_results, errors = search_commons_drawings(query, limit)
-    nasa_results, nasa_errors = search_ntrs_drawings(query, limit)
-    errors.extend(nasa_errors)
-    image_results = search_ddg_technical_images(query, limit, errors)
+    errors = []
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        commons_future = pool.submit(search_commons_drawings, query, matcher, limit)
+        nasa_future = pool.submit(search_ntrs_drawings, query, matcher, limit)
+        image_future = pool.submit(search_ddg_technical_images, query, matcher, limit, errors)
+        commons_results, commons_errors = commons_future.result()
+        nasa_results, nasa_errors = nasa_future.result()
+        image_results = image_future.result()
+    errors.extend(commons_errors + nasa_errors)
+    # Drawings named after the aircraft first; ones that only mention it in
+    # the caption (e.g. a Tu-144 "compared with Concorde") after them.
+    commons_results.sort(key=lambda d: -matcher.strength(d['title'], d.get('body', '')))
 
     merged, seen = [], set()
-    # Prefer actual archival/NASA engineering drawings, then Commons and image-search results.
-    for item in nasa_results + commons_results + image_results:
+    # Real Commons line drawings first (they have previews), then NASA
+    # drawing reports, then general image-search candidates.
+    for item in commons_results + nasa_results + image_results:
         key = (item.get("href") or item.get("image") or "").split("#")[0].lower()
         if not key or key in seen:
             continue
@@ -618,7 +659,7 @@ def search_ntrs(query, limit):
     try:
         data = get_json(
             'https://ntrs.nasa.gov/api/citations/search',
-            {'q': f'{query} aircraft aerospace', 'page.size': min(100, limit)},
+            {'q': f'"{query}"', 'page.size': min(100, limit)},
             timeout=35
         )
         for record in data.get('results', []):
@@ -653,7 +694,7 @@ def research_openalex(query, limit):
         data = get_json(
             'https://api.openalex.org/works',
             {
-                'search': f'{query} aerospace aircraft',
+                'search': f'"{query}" aircraft',
                 'per-page': min(100, limit),
                 'sort': 'relevance_score:desc'
             }
@@ -693,7 +734,7 @@ def research_crossref(query, limit):
         data = get_json(
             'https://api.crossref.org/works',
             {
-                'query.bibliographic': f'{query} aircraft aerospace engineering',
+                'query.bibliographic': f'{query} aircraft',
                 'rows': min(100, limit),
                 'select': 'title,author,abstract,DOI,published,URL,type,publisher'
             }
@@ -756,14 +797,21 @@ def api_search():
         safe = 'moderate'
 
     errors = []
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    # 1. Work out which aircraft this is (Wikipedia article with an aircraft
+    #    infobox). Everything below is filtered against its names.
+    identity = ident.resolve_aircraft(query)
+    matcher = ident.subject_matcher(query, identity)
+    search_name = ident.search_name_for(query, identity)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
         futures = {
-            'web': pool.submit(search_web, query, region, safe, web_limit),
-            'images': pool.submit(search_images, query, region, safe, image_limit),
-            'drawings': pool.submit(search_technical_drawings, query, 150),
-            'openalex': pool.submit(research_openalex, query, min(100, web_limit)),
-            'crossref': pool.submit(research_crossref, query, min(100, web_limit)),
-            'ntrs': pool.submit(search_ntrs, query, min(100, web_limit))
+            'web': pool.submit(search_web, search_name, matcher, region, safe, web_limit),
+            'images': pool.submit(search_images, search_name, matcher, identity,
+                                  region, safe, image_limit),
+            'drawings': pool.submit(search_technical_drawings, search_name, matcher, 150),
+            'openalex': pool.submit(research_openalex, search_name, min(100, web_limit)),
+            'crossref': pool.submit(research_crossref, search_name, min(100, web_limit)),
+            'ntrs': pool.submit(search_ntrs, search_name, min(100, web_limit))
         }
         gathered = {}
         for name, future in futures.items():
@@ -779,18 +827,37 @@ def api_search():
     cr_results, cr_error = gathered['crossref']
     ntrs_results, ntrs_error = gathered['ntrs']
 
+    # Research: keep the providers' relevance order, but list papers that name
+    # the aircraft in their title before ones that only mention it in the
+    # abstract. Interleave sources so one provider does not bury the others.
     research_results, research_seen = [], set()
-    for item in ntrs_results + oa_results + cr_results:
-        if not matches_requested_subject(query, item.get('title',''), item.get('body','')):
+    interleaved = []
+    for row in zip_longest(ntrs_results, oa_results, cr_results):
+        interleaved.extend(item for item in row if item)
+    for order, item in enumerate(interleaved):
+        strength = matcher.strength(item.get('title', ''), item.get('body', ''))
+        if strength == 0:
             continue
-        key = item.get('doi') or item.get('href')
-        if key and key not in research_seen:
-            research_seen.add(key)
-            research_results.append(item)
-    research_results.sort(
-        key=lambda item: str(item.get('year') or ''),
-        reverse=True
-    )
+        key = (item.get('doi') or item.get('href') or '').lower()
+        title_key = re.sub(r'[^a-z0-9]+', '', item.get('title', '').lower())
+        if not key or key in research_seen or title_key in research_seen:
+            continue
+        research_seen.update({key, title_key})
+        research_results.append((-strength, order, item))
+    research_results = [row[2] for row in sorted(research_results, key=lambda r: r[:2])]
+
+    # The aircraft's encyclopedia article is the most useful single source,
+    # so it always leads the web tab when the aircraft was identified.
+    if identity:
+        web_results = [r for r in web_results
+                       if r['href'].split('#')[0] != identity['url']]
+        web_results.insert(0, {
+            'title': f"{identity['title']} — Wikipedia",
+            'href': identity['url'],
+            'body': identity.get('extract') or identity.get('description') or '',
+            'category': 'Encyclopedia article',
+            'source': 'Wikipedia'
+        })
 
     for group in (web_errors, image_errors, drawing_errors):
         if isinstance(group, list):
@@ -801,7 +868,9 @@ def api_search():
 
     return jsonify({
         'query': query,
-        'web_results': web_results,
+        'aircraft': ({k: identity[k] for k in ('title', 'url', 'description', 'thumbnail')}
+                     if identity else None),
+        'web_results': web_results[:web_limit],
         'research_results': research_results[:min(150, max(20, web_limit))],
         'image_results': image_results[:image_limit],
         'drawing_results': drawing_results[:150],
@@ -819,10 +888,10 @@ def api_search():
             'Avionics / cockpit'
         ],
         'provider_summary': {
-            'web': 'DuckDuckGo web search',
+            'web': 'Wikipedia + web search (Google, Bing, Yahoo via ddgs), filtered to the identified aircraft',
             'research': 'NASA NTRS + OpenAlex + Crossref',
-            'images': 'NASA Image and Video Library + DuckDuckGo Images',
-            'drawings': 'Aircraft-specific technical searches across Wikimedia Commons and DuckDuckGo Images; automatically expanded across all ASE 111 report topics'
+            'images': 'Wikipedia article photos + Wikimedia Commons category + NASA Image Library + image search',
+            'drawings': 'Wikimedia Commons, NASA NTRS and image search, expanded across all ASE 111 report topics'
         }
     })
 
@@ -967,23 +1036,84 @@ AIRFOIL_AIRCRAFT_MAP = {
 }
 
 
+def wikipedia_airfoil_profiles(identity):
+    """
+    The airfoil stated in the aircraft's Wikipedia specification table (these
+    are usually cited to Lednicer's Incomplete Guide to Airfoil Usage).
+    Nothing is returned when the article states none — no guessing.
+    """
+    if not identity:
+        return []
+    stated = ident.spec_value(ident.wikipedia_specs(identity["title"]), "airfoil", "aerofoil")
+    if not stated:
+        return []
+    return [{
+        "name": stated,
+        "file": "",
+        "evidence": f"Stated in the “Specifications” section of the Wikipedia article "
+                    f"“{identity['title']}”. Check the reference cited there before formal use.",
+        "url": identity["url"] + "#Specifications"
+    }]
+
+
+def lookup_aircraft(query):
+    """Curated dataset record (if any) plus the Wikipedia identity (if any)."""
+    identity = ident.resolve_aircraft(query)
+    record = find_aircraft_record(query)
+    if not record and identity:
+        for alias in identity["aliases"]:
+            record = find_aircraft_record(alias)
+            if record:
+                break
+    return record, identity
+
+
 @app.get("/api/aircraft/lookup")
 def api_aircraft_lookup():
     query = request.args.get("query", "").strip()
-    record = find_aircraft_record(query)
-    if not record:
-        return jsonify({"available": False, "message": "This aircraft is not available in the current Aeroscraping aircraft dataset."}), 404
-    return jsonify({"available": True, "aircraft": record})
+    record, identity = lookup_aircraft(query)
+    if not record and not identity:
+        return jsonify({
+            "available": False,
+            "message": "No aircraft matching this search was found in the curated "
+                       "dataset or on Wikipedia. Check the spelling or use the full "
+                       "model name (for example “Cessna 172” or “F-16”)."
+        }), 404
+    wiki = None
+    if identity:
+        specs = ident.wikipedia_specs(identity["title"])
+        wiki = {**{k: identity[k] for k in ("title", "url", "description", "extract", "thumbnail")},
+                "specs": specs}
+    return jsonify({"available": True, "aircraft": record, "wikipedia": wiki})
+
 
 @app.get("/api/airfoil")
 def api_airfoil_lookup():
     query = request.args.get("query", "").strip()
-    record = find_aircraft_record(query)
-    if not record:
+    record, identity = lookup_aircraft(query)
+    if not record and not identity:
         return jsonify({
             "available": False,
-            "message": "This aircraft is not available in the current Aeroscraping aircraft dataset. Choose a listed aircraft or search an airfoil designation directly."
+            "message": "This aircraft could not be identified in the curated dataset or on Wikipedia."
         }), 404
+    sources = [
+        {"name": "UIUC Airfoil Coordinates Database (~1,650 profiles)", "url": "https://m-selig.web.engr.illinois.edu/ads/coord_database.html"},
+        {"name": "UIUC Incomplete Guide to Airfoil Usage (aircraft-to-airfoil references)", "url": "https://m-selig.web.engr.illinois.edu/ads/aircraft.html"}
+    ]
+    if not record:
+        profiles = wikipedia_airfoil_profiles(identity)
+        return jsonify({
+            "available": True,
+            "aircraft": identity["title"],
+            "profiles": profiles,
+            "message": (
+                "An airfoil designation is stated in the aircraft's published specifications."
+                if profiles else
+                "No airfoil designation is published for this aircraft in its specifications or "
+                "in Aeroscraping's curated mapping. We will not guess or assign a generic NACA profile."
+            ),
+            "sources": sources
+        })
     profiles = AIRFOIL_AIRCRAFT_MAP.get(record["id"], [])
     if not profiles and record["id"].startswith("boeing-747-"):
         if record["id"] in {"boeing-747-8", "boeing-747-8-intercontinental", "boeing-747-8-freighter"}:
@@ -997,6 +1127,8 @@ def api_airfoil_lookup():
             profiles = AIRFOIL_AIRCRAFT_MAP.get("boeing-747-400", [])
     if not profiles and record["id"].startswith("airbus-a380-"):
         profiles = AIRFOIL_AIRCRAFT_MAP.get("airbus-a380-800", [])
+    if not profiles:
+        profiles = wikipedia_airfoil_profiles(identity)
     return jsonify({
         "available": True,
         "aircraft": record["name"],
@@ -1004,12 +1136,9 @@ def api_airfoil_lookup():
         "message": (
             "A documented aircraft-to-airfoil association is available below."
             if profiles else
-            "No verified airfoil designation for this aircraft is currently recorded in Aeroscraping's curated dataset. We will not guess or assign a generic NACA profile. Check the UIUC airfoil directory and aircraft technical publications for a documented section."
+            "No verified airfoil designation for this aircraft is recorded in Aeroscraping's curated dataset or its published specifications. We will not guess or assign a generic NACA profile. Check the UIUC airfoil directory and aircraft technical publications for a documented section."
         ),
-        "sources": [
-            {"name": "UIUC Airfoil Coordinates Database (~1,650 profiles)", "url": "https://m-selig.web.engr.illinois.edu/ads/coord_database.html"},
-            {"name": "UIUC Incomplete Guide to Airfoil Usage (aircraft-to-airfoil references)", "url": "https://m-selig.web.engr.illinois.edu/ads/coord_database.html"}
-        ]
+        "sources": sources
     })
 
 if __name__ == '__main__':

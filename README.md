@@ -2,7 +2,31 @@
 
 Aeroscraping is a responsive Flask + HTML/CSS/JavaScript aerospace research discovery website. This edition replaces the PHP shared-hosting build and tightens search relevance so results are about the aircraft or aerospace topic the user entered.
 
-## What changed in this build
+## How results stay on-topic (aircraft identification)
+
+Every search first identifies **which aircraft** was meant, using the English Wikipedia article that carries an aircraft infobox (`aircraft_identity.py`). `F-16` becomes *General Dynamics F-16 Fighting Falcon*, `747` becomes *Boeing 747*, and `Warthog` becomes *Fairchild Republic A-10 Thunderbolt II*. List, variant, operator and accident articles are skipped. Every tab is then filtered against that aircraft's names and designations:
+
+- **Matching ignores spacing and hyphens but rejects other numbers.** `F-16`, `F16` and `F-16C` match, but `F-160`, `CF-16` and text that merely contains "16" do not.
+- **Web results** must name the aircraft. Shops, classified ads, pin boards and other-language Wikipedia copies are dropped. Reference, government, manufacturer and established aviation sources rank first, and the aircraft's Wikipedia article always leads.
+- **Images** come from the photos in the aircraft's Wikipedia article (only those whose caption names it), then its own Wikimedia Commons category, then NASA images whose *title* names it, then image search whose *title* names it. NASA links now open the NASA details page, not the raw `collection.json`.
+- **Research** papers must name the aircraft in the title or abstract. Title matches are listed first, and the providers' relevance order is kept rather than re-sorting by year.
+- **Technical drawings** come from Wikimedia Commons (four grouped queries covering all report topics), NASA NTRS and image search. Image-search candidates need a real drawing term (three-view, blueprint, cutaway, planform…), and "wiring diagram" content farms are rejected.
+- **Plane Information** works for any identified aircraft: a Wikipedia overview, lead photo and the full *Specifications* table. Curated dataset values are also shown for the 90 aircraft in `aircraft_dataset.json`.
+- **Airfoil** uses the curated UIUC mapping first, then the airfoil stated in the aircraft's published specification table (e.g. F-16 → NACA 64A204). It never guesses.
+
+If a search is not an aircraft (e.g. `wing spar design`), every significant word of the query must appear in a result instead.
+
+### API contact (recommended for deployment)
+
+Wikimedia, OpenAlex and Crossref rate-limit anonymous clients more aggressively. Set an environment variable with a contact email or URL on the host (Render → *Environment*):
+
+```
+AEROSCRAPING_CONTACT=you@example.com
+```
+
+It is added to the app's User-Agent. Without it the app still works, but it is more likely to hit HTTP 429 rate limits.
+
+## Earlier build notes
 
 - Aerospace-context query expansion for general web search, followed by relevance filtering. Retail/support results unrelated to the requested aircraft are rejected.
 - Research discovery from **OpenAlex** and **Crossref**, including titles, authors, years, DOI links, and abstracts when available.
@@ -53,9 +77,9 @@ OpenAlex and Crossref provide scholarly metadata, not guaranteed full-text acces
 - Unified aircraft research search expands one query across the ASE 111 report areas.
 - Technical drawings and images are shown as visual previews when the provider returns image URLs.
 - Search suggestions are populated from `aircraft_dataset.json`.
-- Plane Information is limited to aircraft in that curated dataset. Unknown aircraft explicitly return an unavailable-in-dataset message.
+- Plane Information shows the curated record when the aircraft is in the dataset, and the Wikipedia overview and specifications for any identified aircraft.
 - Airfoil tab only reports aircraft-to-airfoil associations that have a source-backed mapping. It does not invent a generic airfoil assignment.
-- The initial curated aircraft catalogue contains 65 aircraft across Airbus, Boeing, experimental X-aircraft, US and European fighters, Russian and Chinese aircraft, JF-17, and unmanned aircraft.
+- The curated aircraft catalogue contains 90 aircraft across Airbus, Boeing, experimental X-aircraft, US and European fighters, Russian and Chinese aircraft, JF-17, and unmanned aircraft.
 
 Data notes:
 - Aircraft dimensions and performance values are approximate reference figures and can vary by variant/configuration. Verify with manufacturer documents and applicable type-certificate/authority data before formal use.
