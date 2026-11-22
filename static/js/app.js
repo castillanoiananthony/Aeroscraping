@@ -1,23 +1,72 @@
 const $ = id => document.getElementById(id);
-const appShell = $('appShell');
-const sidebar = $('sidebar');
 
-function setSidebar(collapsed) {
-  appShell.classList.toggle('sidebar-collapsed', collapsed);
-  $('sidebarToggle').setAttribute('aria-expanded', String(!collapsed));
-  $('sidebarToggle').setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-}
-$('sidebarToggle').addEventListener('click', () => setSidebar(!appShell.classList.contains('sidebar-collapsed')));
-// On phones the sidebar sits above the search, so start it folded away.
-if (window.matchMedia('(max-width: 760px)').matches) setSidebar(true);
+// ---------- Settings sheet ----------
+const settingsDialog = $('settingsDialog');
+$('settingsOpen').addEventListener('click', () => settingsDialog.showModal());
+settingsDialog.addEventListener('click', e => { if (e.target === settingsDialog) settingsDialog.close(); });
 
-const profileToggle = $('profileToggle');
-const profileCard = $('profileCard');
-profileToggle.addEventListener('click', () => {
-  const opening = profileCard.hidden;
-  profileCard.hidden = !opening;
-  profileToggle.setAttribute('aria-expanded', String(opening));
-});
+// ---------- Engine spool-up loader ----------
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const loader = (() => {
+  const root = $('searchLoader');
+  const fan = root.querySelector('.engine-fan');
+  const engine = root.querySelector('.engine');
+  const n1 = $('n1Value'), stage = $('loaderStage'), bar = $('loaderBar');
+  const stages = [
+    'Identifying the aircraft…',
+    'Searching web sources…',
+    'Querying NASA NTRS, OpenAlex and Crossref…',
+    'Collecting aircraft images…',
+    'Finding technical drawings…',
+    'Checking airfoil references…',
+    'Reading the specification tables…'
+  ];
+  let spin = null, raf = 0, t0 = 0, level = 0;
+  const maxRate = () => (reduceMotion.matches ? 0.12 : 1);
+  function render(value) {
+    n1.textContent = Math.round(value);
+    bar.style.transform = `scaleX(${value / 100})`;
+    engine.style.setProperty('--glow', (0.25 + value / 130).toFixed(2));
+  }
+  function tick(now) {
+    const t = now - t0;
+    // Spool up quickly, then settle towards ~92% N1 while the search runs.
+    level = 92 * (1 - Math.exp(-t / 2600));
+    spin.playbackRate = Math.max(0.04, maxRate() * (1 - Math.exp(-t / 1100)));
+    render(level);
+    const i = Math.min(stages.length - 1, Math.floor(t / 1800));
+    if (stage.textContent !== stages[i]) stage.textContent = stages[i];
+    raf = requestAnimationFrame(tick);
+  }
+  return {
+    start() {
+      cancelAnimationFrame(raf);
+      root.classList.remove('is-leaving');
+      root.hidden = false;
+      stage.textContent = stages[0];
+      render(0);
+      spin?.cancel();
+      // One revolution every 0.42s at full power.
+      spin = fan.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 420, iterations: Infinity });
+      spin.playbackRate = 0.04;
+      t0 = performance.now();
+      raf = requestAnimationFrame(tick);
+    },
+    stop(ok = true) {
+      cancelAnimationFrame(raf);
+      if (ok) { render(100); stage.textContent = 'Results ready'; }
+      const from = spin ? spin.playbackRate : 0, s0 = performance.now();
+      const wind = now => {
+        const k = Math.min(1, (now - s0) / 260);
+        if (spin) spin.playbackRate = Math.max(0.02, from * (1 - k));
+        if (k < 1) requestAnimationFrame(wind);
+      };
+      requestAnimationFrame(wind);
+      setTimeout(() => root.classList.add('is-leaving'), ok ? 120 : 0);
+      setTimeout(() => { root.hidden = true; root.classList.remove('is-leaving'); spin?.cancel(); spin = null; }, ok ? 360 : 240);
+    }
+  };
+})();
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -271,7 +320,9 @@ $('searchForm').addEventListener('submit',async event=>{
   event.preventDefault();
   const query=$('query').value.trim();if(!query)return;lastQuery=query;
   const button=$('searchButton'),status=$('status'),results=$('resultsSection');
-  button.disabled=true;button.textContent='Searching…';$('searchLoader').hidden=false;status.className='status';status.textContent='Searching the aircraft, research publications, images, technical drawings, airfoil references, and aircraft dataset…';results.hidden=true;
+  const buttonLabel=button.querySelector('span');
+  button.disabled=true;buttonLabel.textContent='Searching…';loader.start();status.className='status';status.replaceChildren();results.hidden=true;
+  let ok=false;
   try{
     const payload={query,web_limit:Math.max(1,Math.min(1000,Number($('webLimit').value)||150)),image_limit:Math.max(1,Math.min(1000,Number($('imageLimit').value)||150)),region:$('region').value,safesearch:$('safeSearch').value};
     const response=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -290,7 +341,10 @@ $('searchForm').addEventListener('submit',async event=>{
     results.classList.remove('is-revealed');results.hidden=false;void results.offsetWidth;results.classList.add('is-revealed');
     setTab('web');status.replaceChildren();
     if(data.errors&&data.errors.length)status.textContent=`Some search providers timed out or were unavailable (${data.errors.length} notices). Results from the other sources are still shown.`;
-    results.scrollIntoView({behavior:'smooth',block:'start'});
+    ok=true;
   }catch(error){status.className='status error';status.textContent=error.message;}
-  finally{button.disabled=false;button.textContent='Search';$('searchLoader').hidden=true;}
+  finally{
+    button.disabled=false;buttonLabel.textContent='Search';loader.stop(ok);
+    if(ok)setTimeout(()=>results.scrollIntoView({behavior:reduceMotion.matches?'auto':'smooth',block:'start'}),260);
+  }
 });

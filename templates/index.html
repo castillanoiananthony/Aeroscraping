@@ -2,49 +2,193 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#141312">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0b0b">
   <meta name="description" content="Aeroscraping — aerospace aircraft research, drawings, airfoil references and aircraft data.">
   <title>Aeroscraping</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='assets/plane.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-1') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-2') }}">
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/><path d="m15.5 10-2 2 2 2"/></symbol>
-  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="g-blade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4b4644"/><stop offset=".45" stop-color="#d9d4cf"/><stop offset="1" stop-color="#6f6966"/>
+    </linearGradient>
+    <radialGradient id="g-spinner" cx=".38" cy=".34" r=".75">
+      <stop offset="0" stop-color="#f4f0ec"/><stop offset=".45" stop-color="#8d8784"/><stop offset="1" stop-color="#1e1b1a"/>
+    </radialGradient>
+    <radialGradient id="g-intake" cx=".5" cy=".5" r=".5">
+      <stop offset="0" stop-color="#3d0d14"/><stop offset=".55" stop-color="#140d0e"/><stop offset="1" stop-color="#070606"/>
+    </radialGradient>
+    <linearGradient id="g-nacelle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5d5754"/><stop offset=".35" stop-color="#262321"/><stop offset=".7" stop-color="#121010"/><stop offset="1" stop-color="#3a3533"/>
+    </linearGradient>
+    <path id="blade" d="M-13 -46 C-16 -92 -10 -140 -2 -183 L24 -181 C28 -140 22 -92 13 -46 Z"/>
+  </defs>
+  <symbol id="engine" viewBox="-230 -230 460 460">
+    <circle r="222" fill="url(#g-nacelle)"/>
+    <circle r="204" fill="none" stroke="#7a7370" stroke-opacity=".55" stroke-width="1.5"/>
+    <circle r="198" fill="url(#g-intake)"/>
+    <circle r="190" fill="none" stroke="#d63e50" stroke-width="3"/>
+    <g stroke="#ffffff" stroke-opacity=".06" stroke-width="2">
+      <path d="M0 -60V-186M0 60V186M-60 0H-186M60 0H186M-42 -42L-132 -132M42 42L132 132M-42 42L-132 132M42 -42L132 -132"/>
+    </g>
+  </symbol>
+  <symbol id="fan" viewBox="-230 -230 460 460">
+    <g fill="url(#g-blade)" stroke="#0b0909" stroke-width="1.5"><use href="#blade" transform="rotate(0.00)"/><use href="#blade" transform="rotate(16.36)"/><use href="#blade" transform="rotate(32.73)"/><use href="#blade" transform="rotate(49.09)"/><use href="#blade" transform="rotate(65.45)"/><use href="#blade" transform="rotate(81.82)"/><use href="#blade" transform="rotate(98.18)"/><use href="#blade" transform="rotate(114.55)"/><use href="#blade" transform="rotate(130.91)"/><use href="#blade" transform="rotate(147.27)"/><use href="#blade" transform="rotate(163.64)"/><use href="#blade" transform="rotate(180.00)"/><use href="#blade" transform="rotate(196.36)"/><use href="#blade" transform="rotate(212.73)"/><use href="#blade" transform="rotate(229.09)"/><use href="#blade" transform="rotate(245.45)"/><use href="#blade" transform="rotate(261.82)"/><use href="#blade" transform="rotate(278.18)"/><use href="#blade" transform="rotate(294.55)"/><use href="#blade" transform="rotate(310.91)"/><use href="#blade" transform="rotate(327.27)"/><use href="#blade" transform="rotate(343.64)"/></g>
+    <circle r="56" fill="#100e0e"/>
+    <circle r="50" fill="url(#g-spinner)"/>
+    <path d="M0 0C10 -14 30 -10 32 6C34 20 20 34 4 34" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  </symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
   <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14"/><path d="M5 11h14"/><path d="M5 16h9"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></symbol>
 </svg>
 
-<div id="searchLoader" class="search-loader" hidden aria-live="polite"><div class="turbine" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div><p>Searching aerospace references…</p></div>
-<div class="app-shell" id="appShell">
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-topline">
-      <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-expanded="true" aria-controls="sidebar" aria-label="Collapse sidebar"><svg class="icon"><use href="#i-panel"/></svg></button>
-      <span class="sidebar-heading">Research workspace</span>
+<!-- Engine spool-up loader -->
+<div id="searchLoader" class="engine-loader" hidden role="status" aria-live="polite">
+  <div class="engine-loader-inner">
+    <div class="engine engine-lg" aria-hidden="true">
+      <svg class="engine-case"><use href="#engine"/></svg>
+      <svg class="engine-fan"><use href="#fan"/></svg>
     </div>
-
-    <div class="profile-area">
-      <button id="profileToggle" class="profile-toggle" type="button" aria-expanded="false" aria-controls="profileCard">
-        <img class="profile-avatar" src="{{ url_for('static', filename='assets/developer.webp') }}" alt="" width="32" height="32">
-        <span class="profile-toggle-text"><strong>About the Dev</strong><span>Ian Anthony H. Castillano</span></span>
-        <svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
-      </button>
-      <section id="profileCard" class="profile-card" hidden>
-        <img class="profile-photo" src="{{ url_for('static', filename='assets/developer.webp') }}" alt="Ian Anthony H. Castillano" width="88" height="88" loading="lazy">
-        <h2>Ian Anthony H. Castillano</h2>
-        <p>Cebu Technological University</p>
-        <p>Bachelor of Science in Aerospace Engineering</p>
-        <a href="mailto:castillano.iananthony.h@gmail.com">castillano.iananthony.h@gmail.com</a>
-      </section>
+    <div class="readout">
+      <span class="readout-label">N1</span>
+      <span class="readout-value"><span id="n1Value">0</span>%</span>
     </div>
+    <p id="loaderStage" class="loader-stage">Identifying the aircraft…</p>
+    <div class="loader-track" aria-hidden="true"><span id="loaderBar"></span></div>
+  </div>
+</div>
 
-    <section class="settings" aria-labelledby="settingsTitle">
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#top" aria-label="Aeroscraping home">
+      <span class="brand-mark" aria-hidden="true"><svg><use href="#engine"/></svg><svg class="brand-fan"><use href="#fan"/></svg></span>
+      Aeroscraping
+    </a>
+    <nav class="nav-pill" aria-label="Sections">
+      <a href="#top">Search</a>
+      <a href="#guide">Guide</a>
+      <a href="#sources">Sources</a>
+      <a href="#about">About</a>
+    </nav>
+    <button id="settingsOpen" class="ghost-button" type="button" aria-haspopup="dialog" aria-controls="settingsDialog">
+      <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg><span>Search settings</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="hero-bg" aria-hidden="true">
+      <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+    </div>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <h1>Research the engineering behind flight.</h1>
+        <p class="tagline">An aerospace engineering research engine for aircraft configuration, structures, propulsion, aerodynamics, flight controls, and avionics.</p>
+        <p class="byline">by Ian Anthony Castillano</p>
+
+        <form id="searchForm" class="search" role="search">
+          <label class="sr-only" for="query">Search one aircraft — Aeroscraping researches the report topics together</label>
+          <div class="search-bar">
+            <svg class="icon search-icon" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="query" name="query" type="search" placeholder="Search an aircraft…" autocomplete="off" enterkeyhint="search" required>
+            <button id="searchButton" class="primary-button" type="submit"><span>Search</span><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button>
+          </div>
+          <div class="search-sub">
+            <select id="aircraftSelect" class="chip-select" aria-label="Choose an aircraft from the dataset">
+              <option value="">Browse aircraft dataset</option>
+            </select>
+            <span class="search-hint">One search expands into configuration, structure, propulsion, aerodynamics, controls, and avionics.</span>
+          </div>
+        </form>
+        <section id="status" class="status" aria-live="polite"></section>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="engine engine-hero">
+          <svg class="engine-case"><use href="#engine"/></svg>
+          <svg class="engine-fan"><use href="#fan"/></svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="resultsSection" class="panel results-section" hidden>
+    <div class="results-heading">
+      <h2 id="resultsTitle">Search results</h2>
+      <p id="resultsCounts"></p>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Research categories">
+      <button class="tab" role="tab" id="tab-web" aria-controls="panel-web" aria-selected="true" data-tab="web" type="button">Web <span class="count" id="webCount">0</span></button>
+      <button class="tab" role="tab" id="tab-research" aria-controls="panel-research" aria-selected="false" tabindex="-1" data-tab="research" type="button">Research &amp; Reports <span class="count" id="researchCount">0</span></button>
+      <button class="tab" role="tab" id="tab-images" aria-controls="panel-images" aria-selected="false" tabindex="-1" data-tab="images" type="button">Images <span class="count" id="imageCount">0</span></button>
+      <button class="tab" role="tab" id="tab-drawings" aria-controls="panel-drawings" aria-selected="false" tabindex="-1" data-tab="drawings" type="button">Technical Drawings <span class="count" id="drawingCount">0</span></button>
+      <button class="tab" role="tab" id="tab-airfoil" aria-controls="panel-airfoil" aria-selected="false" tabindex="-1" data-tab="airfoil" type="button">Airfoil</button>
+      <button class="tab" role="tab" id="tab-plane" aria-controls="panel-plane" aria-selected="false" tabindex="-1" data-tab="plane" type="button">Plane Information</button>
+    </nav>
+    <div id="panel-web" class="tab-panel" role="tabpanel" aria-labelledby="tab-web"></div>
+    <div id="panel-research" class="tab-panel" role="tabpanel" aria-labelledby="tab-research" hidden></div>
+    <div id="panel-images" class="tab-panel" role="tabpanel" aria-labelledby="tab-images" hidden></div>
+    <div id="panel-drawings" class="tab-panel" role="tabpanel" aria-labelledby="tab-drawings" hidden></div>
+    <div id="panel-airfoil" class="tab-panel" role="tabpanel" aria-labelledby="tab-airfoil" hidden></div>
+    <div id="panel-plane" class="tab-panel" role="tabpanel" aria-labelledby="tab-plane" hidden></div>
+  </section>
+
+  <section id="guide" class="panel guide">
+    <div class="guide-head">
+      <h2>Search efficiently</h2>
+      <p>Aeroscraping identifies the exact aircraft first, then filters every tab to it.</p>
+    </div>
+    <ol class="tips">
+      <li><strong>Name the aircraft.</strong> Use the full name or model, such as <b>Airbus A350-900</b>.</li>
+      <li><strong>Any aircraft works.</strong> <b>F-16</b>, <b>Cessna 172</b>, <b>747</b> or a nickname like <b>Warthog</b>.</li>
+      <li><strong>Drawings come with it.</strong> Search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
+      <li><strong>Narrow with engineering terms.</strong> Try <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> for a focused follow-up.</li>
+      <li><strong>Verify before citing.</strong> Check the source page, publication date, variant, and units.</li>
+    </ol>
+    <div class="notice">
+      <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+      <p><strong>This website is in its early stage.</strong> Aeroscraping is actively being developed. Search coverage, aircraft records, airfoil mappings, and drawing availability are still expanding. Always verify technical values against primary sources before using them in engineering work.</p>
+    </div>
+  </section>
+
+  <section id="sources" class="sources">
+    <h2>Searches across</h2>
+    <ul class="source-row">
+      <li>Wikipedia</li><li>Wikimedia Commons</li><li>NASA NTRS</li><li>NASA Images</li><li>OpenAlex</li><li>Crossref</li><li>UIUC Airfoil Database</li>
+    </ul>
+  </section>
+</main>
+
+<footer id="about" class="footer">
+  <div class="dev-card">
+    <img class="dev-photo" src="{{ url_for('static', filename='assets/developer.webp') }}" alt="Ian Anthony H. Castillano" width="72" height="72" loading="lazy">
+    <div class="dev-text">
+      <h2>Ian Anthony H. Castillano</h2>
+      <p>Bachelor of Science in Aerospace Engineering · Cebu Technological University</p>
+      <a href="mailto:castillano.iananthony.h@gmail.com"><svg class="icon" aria-hidden="true"><use href="#i-mail"/></svg>castillano.iananthony.h@gmail.com</a>
+    </div>
+  </div>
+  <p class="footer-line">Aeroscraping · Developed by Ian Anthony H. Castillano</p>
+</footer>
+
+<dialog id="settingsDialog" class="sheet" aria-labelledby="settingsTitle">
+  <form method="dialog" class="sheet-inner">
+    <div class="sheet-head">
       <h2 id="settingsTitle">Search settings</h2>
+      <button class="icon-button" value="close" aria-label="Close settings"><svg class="icon"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="field-grid">
       <div class="field">
         <label for="webLimit">Max web results</label>
         <input id="webLimit" class="control" type="number" min="1" max="1000" step="10" value="150" inputmode="numeric">
@@ -70,78 +214,11 @@
           <option value="off">Off</option>
         </select>
       </div>
-    </section>
-
-    <section class="early-note">
-      <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
-      <div>
-        <h2>This website is in its early stage.</h2>
-        <p>Aeroscraping is actively being developed. Search coverage, aircraft records, airfoil mappings, and drawing availability are still expanding. Always verify technical values against primary sources before using them in engineering work.</p>
-      </div>
-    </section>
-
-    <section class="tips-panel">
-      <h2>Search efficiently</h2>
-      <ul>
-        <li>Use the full aircraft name or model, such as <b>Airbus A350-900</b>.</li>
-        <li>Any aircraft works: <b>F-16</b>, <b>Cessna 172</b>, <b>747</b> or a nickname like <b>Warthog</b>. Aeroscraping identifies the exact aircraft first and filters every tab to it.</li>
-        <li>For drawings, search the aircraft name; the engine expands across configuration, structure, propulsion, controls, and avionics.</li>
-        <li>Try engineering terms such as <b>three-view</b>, <b>wing planform</b>, <b>spar</b>, or <b>fuselage section</b> if you need a focused follow-up.</li>
-        <li>Check the source page, publication date, variant, and units before citing.</li>
-      </ul>
-    </section>
-
-    <div class="sidebar-note">Aeroscraping<span>Research the engineering behind flight.</span></div>
-  </aside>
-
-  <main class="main-content">
-    <div class="main-inner">
-      <header class="hero">
-        <h1>Aeroscraping</h1>
-        <p class="byline">by Ian Anthony Castillano</p>
-        <p class="tagline">An aerospace engineering research engine for aircraft configuration, structures, propulsion, aerodynamics, flight controls, and avionics.</p>
-      </header>
-
-      <form id="searchForm" class="search-panel" role="search">
-        <label for="query">Search one aircraft — Aeroscraping researches the report topics together</label>
-        <div class="search-row">
-          <div class="search-field">
-            <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
-            <input id="query" class="control" name="query" type="search" placeholder="Type an aircraft or choose from the list…" autocomplete="off" enterkeyhint="search" required>
-          </div>
-          <select id="aircraftSelect" class="control" aria-label="Choose an aircraft from the dataset">
-            <option value="">Browse aircraft dataset…</option>
-          </select>
-          <button id="searchButton" class="primary-button" type="submit">Search</button>
-        </div>
-        <div class="search-hint">One aircraft search expands into configuration, structure, propulsion, aerodynamics, controls, and avionics.</div>
-      </form>
-
-      <section id="status" class="status" aria-live="polite"></section>
-      <section id="resultsSection" class="results-section" hidden>
-        <div class="results-heading">
-          <h2 id="resultsTitle">Search results</h2>
-          <p id="resultsCounts"></p>
-        </div>
-        <nav class="tabs" role="tablist" aria-label="Research categories">
-          <button class="tab" role="tab" id="tab-web" aria-controls="panel-web" aria-selected="true" data-tab="web" type="button">Web Results <span class="count" id="webCount">0</span></button>
-          <button class="tab" role="tab" id="tab-research" aria-controls="panel-research" aria-selected="false" tabindex="-1" data-tab="research" type="button">Research &amp; Reports <span class="count" id="researchCount">0</span></button>
-          <button class="tab" role="tab" id="tab-images" aria-controls="panel-images" aria-selected="false" tabindex="-1" data-tab="images" type="button">Image Results <span class="count" id="imageCount">0</span></button>
-          <button class="tab" role="tab" id="tab-drawings" aria-controls="panel-drawings" aria-selected="false" tabindex="-1" data-tab="drawings" type="button">Technical Drawings <span class="count" id="drawingCount">0</span></button>
-          <button class="tab" role="tab" id="tab-airfoil" aria-controls="panel-airfoil" aria-selected="false" tabindex="-1" data-tab="airfoil" type="button">Airfoil</button>
-          <button class="tab" role="tab" id="tab-plane" aria-controls="panel-plane" aria-selected="false" tabindex="-1" data-tab="plane" type="button">Plane Information</button>
-        </nav>
-        <div id="panel-web" class="tab-panel" role="tabpanel" aria-labelledby="tab-web"></div>
-        <div id="panel-research" class="tab-panel" role="tabpanel" aria-labelledby="tab-research" hidden></div>
-        <div id="panel-images" class="tab-panel" role="tabpanel" aria-labelledby="tab-images" hidden></div>
-        <div id="panel-drawings" class="tab-panel" role="tabpanel" aria-labelledby="tab-drawings" hidden></div>
-        <div id="panel-airfoil" class="tab-panel" role="tabpanel" aria-labelledby="tab-airfoil" hidden></div>
-        <div id="panel-plane" class="tab-panel" role="tabpanel" aria-labelledby="tab-plane" hidden></div>
-      </section>
-      <footer class="footer">Aeroscraping · Developed by Ian Anthony H. Castillano</footer>
     </div>
-  </main>
-</div>
-<script src="{{ url_for('static', filename='js/app.js', v='20261123-1') }}"></script>
+    <button class="primary-button sheet-done" value="close">Done</button>
+  </form>
+</dialog>
+
+<script src="{{ url_for('static', filename='js/app.js', v='20261123-2') }}"></script>
 </body>
 </html>
