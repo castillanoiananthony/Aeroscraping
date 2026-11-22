@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#0c0b0b">
   <meta name="description" content="Aeroscraping — aerospace aircraft research, drawings, airfoil references and aircraft data.">
   <title>Aeroscraping</title>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='assets/plane.png') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='assets/favicon.svg') }}">
+  <link rel="icon" type="image/png" sizes="48x48" href="{{ url_for('static', filename='assets/favicon-48.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='assets/apple-touch-icon.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-3') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-4') }}">
 </head>
 <body>
 <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
@@ -42,6 +44,7 @@
     <circle r="50" fill="url(#g-spinner)"/>
     <path d="M0 0C10 -14 30 -10 32 6C34 20 20 34 4 34" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
   </symbol>
+  <symbol id="logo" viewBox="0 0 64 64"><circle cx="36" cy="27" r="14" fill="#e03a4f"/><g transform="translate(30.5 34) rotate(42) scale(.086)"><polygon points="0,-272 6,-232 11,-150 25.08,-60 58.36,20 112.12,85 176.12,150 199.16,200 188.92,212 76.28,213 76.28,236 25.08,236 11,214 8,250 0,252" fill="#f4ede6"/><polygon points="0,-272 -6,-232 -11,-150 -25.08,-60 -58.36,20 -112.12,85 -176.12,150 -199.16,200 -188.92,212 -76.28,213 -76.28,236 -25.08,236 -11,214 -8,250 0,252" fill="#a39b95"/><polygon points="0,-272 6,-232 8,-205 0,-212 -8,-205 -6,-232" fill="#e03a4f"/></g></symbol>
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
@@ -71,7 +74,7 @@
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="#top" aria-label="Aeroscraping home">
-      <span class="brand-mark" aria-hidden="true"><svg><use href="#engine"/></svg><svg class="brand-fan"><use href="#fan"/></svg></span>
+      <svg class="brand-mark" aria-hidden="true"><use href="#logo"/></svg>
       Aeroscraping
     </a>
     <nav class="nav-pill" aria-label="Sections">
@@ -225,42 +228,47 @@
 </footer>
 
 <dialog id="settingsDialog" class="sheet" aria-labelledby="settingsTitle">
-  <form method="dialog" class="sheet-inner">
+  <form method="dialog" class="sheet-inner" novalidate>
     <div class="sheet-head">
       <h2 id="settingsTitle">Search settings</h2>
       <button class="icon-button" value="close" aria-label="Close settings"><svg class="icon"><use href="#i-close"/></svg></button>
     </div>
-    <div class="field-grid">
+    <p class="sheet-intro">These apply to your next search. Higher limits find more, but searches take longer.</p>
+    <div class="settings-list">
       <div class="field">
         <label for="webLimit">Max web results</label>
-        <input id="webLimit" class="control" type="number" min="1" max="1000" step="10" value="150" inputmode="numeric">
+        <input id="webLimit" class="control" type="number" min="1" max="1000" step="1" value="150" inputmode="numeric" aria-describedby="webLimitHelp">
+        <p class="field-help" id="webLimitHelp">How many web pages the <b>Web</b> tab can show, from 1 to 1000. It also sets how deep Aeroscraping digs into NASA NTRS, OpenAlex and Crossref (up to 100 each), so the <b>Research &amp; Reports</b> tab shows between 20 and 150 papers.</p>
       </div>
       <div class="field">
         <label for="imageLimit">Max image results</label>
-        <input id="imageLimit" class="control" type="number" min="1" max="1000" step="10" value="150" inputmode="numeric">
+        <input id="imageLimit" class="control" type="number" min="1" max="1000" step="1" value="150" inputmode="numeric" aria-describedby="imageLimitHelp">
+        <p class="field-help" id="imageLimitHelp">How many photos the <b>Images</b> tab can show, from 1 to 1000. Photos come from the aircraft’s Wikipedia article and Wikimedia Commons first, then NASA and image search.</p>
       </div>
-      <div class="field field-wide">
+      <div class="field">
         <label for="region">Region</label>
-        <select id="region" class="control">
+        <select id="region" class="control" aria-describedby="regionHelp">
           <option value="wt-wt">All regions</option>
           <option value="ph-en">Philippines (English)</option>
           <option value="us-en">United States (English)</option>
           <option value="uk-en">United Kingdom (English)</option>
         </select>
+        <p class="field-help" id="regionHelp">Which country’s results web and image search favour, such as local news, operators and museums. Research papers, Wikipedia and NASA sources are the same in every region.</p>
       </div>
-      <div class="field field-wide">
+      <div class="field">
         <label for="safeSearch">Safe search</label>
-        <select id="safeSearch" class="control">
+        <select id="safeSearch" class="control" aria-describedby="safeSearchHelp">
           <option value="moderate">Moderate</option>
           <option value="strict">Strict</option>
           <option value="off">Off</option>
         </select>
+        <p class="field-help" id="safeSearchHelp">Filters explicit content out of web and image search. <b>Moderate</b> suits most research; <b>Strict</b> filters more; <b>Off</b> filters nothing.</p>
       </div>
     </div>
     <button class="primary-button sheet-done" value="close">Done</button>
   </form>
 </dialog>
 
-<script src="{{ url_for('static', filename='js/app.js', v='20261123-3') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js', v='20261123-4') }}"></script>
 </body>
 </html>

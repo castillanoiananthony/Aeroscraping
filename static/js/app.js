@@ -4,6 +4,16 @@ const $ = id => document.getElementById(id);
 const settingsDialog = $('settingsDialog');
 $('settingsOpen').addEventListener('click', () => settingsDialog.showModal());
 settingsDialog.addEventListener('click', e => { if (e.target === settingsDialog) settingsDialog.close(); });
+// Any whole number from 1 to 1000 is accepted; tidy typed values instead of rejecting them.
+['webLimit', 'imageLimit'].forEach(id => {
+  const input = $(id);
+  const tidy = () => {
+    const n = Math.round(Number(input.value));
+    input.value = Number.isFinite(n) && input.value !== '' ? Math.max(1, Math.min(1000, n)) : 150;
+  };
+  input.addEventListener('change', tidy);
+  settingsDialog.addEventListener('close', tidy);
+});
 
 // ---------- Engine spool-up loader ----------
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
