@@ -8,7 +8,7 @@
   <title>Aeroscraping</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='assets/plane.png') }}">
   <link rel="preload" href="{{ url_for('static', filename='fonts/archivo-latin.woff2') }}" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-2') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css', v='20261123-3') }}">
 </head>
 <body>
 <svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
@@ -114,11 +114,53 @@
         <section id="status" class="status" aria-live="polite"></section>
       </div>
 
-      <div class="hero-visual" aria-hidden="true">
-        <div class="engine engine-hero">
-          <svg class="engine-case"><use href="#engine"/></svg>
-          <svg class="engine-fan"><use href="#fan"/></svg>
-        </div>
+      <div class="hero-visual">
+<svg class="concorde-art" viewBox="0 0 600 600" role="img" aria-label="Abstract cubist illustration of Concorde">
+  <defs>
+    <radialGradient id="sun" cx=".42" cy=".4" r=".65"><stop offset="0" stop-color="#ff5a6b"/><stop offset=".55" stop-color="#c22a3e"/><stop offset="1" stop-color="#5a1320"/></radialGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a1216"/><stop offset="1" stop-color="#120d0e"/></linearGradient>
+  </defs>
+  <g class="art-bg">
+    <rect x="110" y="110" width="380" height="380" rx="6" fill="url(#band)" fill-opacity=".85" transform="rotate(12 300 300)"/>
+    <circle cx="350" cy="230" r="150" fill="url(#sun)"/>
+    <polygon points="70,470 300,540 250,430" fill="#f1e9e0" fill-opacity=".05"/>
+    <rect x="120" y="140" width="210" height="210" fill="none" stroke="#f1e9e0" stroke-opacity=".14" transform="rotate(-18 225 245)"/>
+    <circle cx="350" cy="230" r="205" fill="none" stroke="#f1e9e0" stroke-opacity=".1"/>
+    <path d="M60 520 L540 90" stroke="#e03a4f" stroke-opacity=".5" stroke-width="2"/>
+    <path d="M110 560 L560 160" stroke="#f1e9e0" stroke-opacity=".12" stroke-width="1"/>
+    <polygon points="430,330 560,300 520,450" fill="#e03a4f" fill-opacity=".18"/>
+    <polygon points="60,180 170,120 150,260" fill="#f1e9e0" fill-opacity=".06"/>
+  </g>
+  <g class="plane-float">
+    <g transform="translate(300 312) rotate(42) scale(.92)">
+      <polygon class="echo echo-red" points="0,-272 6,-232 11,-150 25.08,-60 58.36,20 112.12,85 176.12,150 199.16,200 188.92000000000002,212 76.28,213 76.28,236 25.08,236 11,214 8,250 0,252 -8,250 -11,214 -25.08,236 -76.28,236 -76.28,213 -188.92000000000002,212 -199.16,200 -176.12,150 -112.12,85 -58.36,20 -25.08,-60 -11,-150 -6,-232" transform="translate(26 18)"/>
+      <polygon class="echo echo-line" points="0,-272 6,-232 11,-150 25.08,-60 58.36,20 112.12,85 176.12,150 199.16,200 188.92000000000002,212 76.28,213 76.28,236 25.08,236 11,214 8,250 0,252 -8,250 -11,214 -25.08,236 -76.28,236 -76.28,213 -188.92000000000002,212 -199.16,200 -176.12,150 -112.12,85 -58.36,20 -25.08,-60 -11,-150 -6,-232" transform="translate(-22 -14) scale(1.04)"/>
+      <polygon class="facet" style="--dx:0.7px;--dy:-3.9px" points="11,-150 25.08,-60 11,-40" fill="#f1e9e0"/>
+<polygon class="facet" style="--dx:3.9px;--dy:-0.7px" points="11,-40 25.08,-60 58.36,20 11,60" fill="#d9d0c8"/>
+<polygon class="facet" style="--dx:2.6px;--dy:3.1px" points="11,60 58.36,20 112.12,85 73.72,140" fill="#b8afa8"/>
+<polygon class="facet" style="--dx:0.9px;--dy:3.9px" points="11,60 73.72,140 11,214" fill="#ebe3db"/>
+<polygon class="facet" style="--dx:2.6px;--dy:3.0px" points="73.72,140 112.12,85 176.12,150 137.72,213" fill="#e03a4f"/>
+<polygon class="facet" style="--dx:1.5px;--dy:3.7px" points="73.72,140 137.72,213 11,214" fill="#8d8580"/>
+<polygon class="facet" style="--dx:2.7px;--dy:3.0px" points="176.12,150 199.16,200 188.92000000000002,212 137.72,213" fill="#8f1d2c"/>
+<polygon class="facet" style="--dx:-0.7px;--dy:-3.9px" points="-11,-150 -25.08,-60 -11,-40" fill="#8d8580"/>
+<polygon class="facet" style="--dx:-3.9px;--dy:-0.7px" points="-11,-40 -25.08,-60 -58.36,20 -11,60" fill="#5a524f"/>
+<polygon class="facet" style="--dx:-2.6px;--dy:3.1px" points="-11,60 -58.36,20 -112.12,85 -73.72,140" fill="#3b3533"/>
+<polygon class="facet" style="--dx:-0.9px;--dy:3.9px" points="-11,60 -73.72,140 -11,214" fill="#6e6662"/>
+<polygon class="facet" style="--dx:-2.6px;--dy:3.0px" points="-73.72,140 -112.12,85 -176.12,150 -137.72,213" fill="#8f1d2c"/>
+<polygon class="facet" style="--dx:-1.5px;--dy:3.7px" points="-73.72,140 -137.72,213 -11,214" fill="#2b2524"/>
+<polygon class="facet" style="--dx:-2.7px;--dy:3.0px" points="-176.12,150 -199.16,200 -188.92000000000002,212 -137.72,213" fill="#e03a4f"/>
+<polygon class="facet" style="--dx:0.8px;--dy:3.9px" points="25.08,112 49.4,112 49.4,236 25.08,236" fill="#2b2524"/>
+<polygon class="facet" style="--dx:-0.8px;--dy:3.9px" points="-25.08,112 -49.4,112 -49.4,236 -25.08,236" fill="#1f1b1a"/>
+<polygon class="facet" style="--dx:1.4px;--dy:3.8px" points="51.96,112 76.28,112 76.28,236 51.96,236" fill="#3b3533"/>
+<polygon class="facet" style="--dx:-1.4px;--dy:3.8px" points="-51.96,112 -76.28,112 -76.28,236 -51.96,236" fill="#4a1019"/>
+<polygon class="facet" style="--dx:0.6px;--dy:4.0px" points="0,-200 9,-190 11,-60 11,200 8,250 0,252" fill="#f4ede6"/>
+<polygon class="facet" style="--dx:-0.6px;--dy:4.0px" points="0,-200 -9,-190 -11,-60 -11,200 -8,250 0,252" fill="#a39b95"/>
+<polygon class="facet" style="--dx:0.0px;--dy:-4.0px" points="0,-272 6,-232 9,-190 0,-200 -9,-190 -6,-232" fill="#e03a4f"/>
+<polygon class="facet" style="--dx:0.0px;--dy:4.0px" points="-3,150 3,150 2,262 -2,262" fill="#f4ede6"/>
+      <path d="M0 -150 V240" stroke="#1f1b1a" stroke-opacity=".35" stroke-width="1"/>
+    </g>
+  </g>
+</svg>
       </div>
     </div>
   </section>
@@ -219,6 +261,6 @@
   </form>
 </dialog>
 
-<script src="{{ url_for('static', filename='js/app.js', v='20261123-2') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js', v='20261123-3') }}"></script>
 </body>
 </html>
