@@ -2,12 +2,14 @@ const $ = id => document.getElementById(id);
 const appShell = $('appShell');
 const sidebar = $('sidebar');
 
-$('sidebarToggle').addEventListener('click', () => {
-  const collapsed = appShell.classList.toggle('sidebar-collapsed');
+function setSidebar(collapsed) {
+  appShell.classList.toggle('sidebar-collapsed', collapsed);
   $('sidebarToggle').setAttribute('aria-expanded', String(!collapsed));
   $('sidebarToggle').setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
-  $('sidebarToggle').textContent = collapsed ? '→' : '←';
-});
+}
+$('sidebarToggle').addEventListener('click', () => setSidebar(!appShell.classList.contains('sidebar-collapsed')));
+// On phones the sidebar sits above the search, so start it folded away.
+if (window.matchMedia('(max-width: 760px)').matches) setSidebar(true);
 
 const profileToggle = $('profileToggle');
 const profileCard = $('profileCard');
@@ -15,7 +17,6 @@ profileToggle.addEventListener('click', () => {
   const opening = profileCard.hidden;
   profileCard.hidden = !opening;
   profileToggle.setAttribute('aria-expanded', String(opening));
-  profileToggle.querySelector('.chevron').textContent = opening ? '⌃' : '⌄';
 });
 
 function el(tag, className, text) {
@@ -28,23 +29,34 @@ function safeUrl(value) {
   try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) ? u.href : ''; }
   catch { return ''; }
 }
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function icon(name) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'icon'); svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(SVG_NS, 'use'); use.setAttribute('href', `#i-${name}`);
+  svg.append(use); return svg;
+}
 function addLink(parent, label, href, className='source-link') {
   const url = safeUrl(href);
   if (!url) return;
-  const a = el('a', className, label); a.href=url; a.target='_blank'; a.rel='noopener noreferrer'; parent.append(a);
+  const a = el('a', className, label); a.href=url; a.target='_blank'; a.rel='noopener noreferrer';
+  a.append(icon('external')); parent.append(a);
+}
+function metaRow(tag, parts) {
+  const row = el('div', 'result-meta');
+  if (tag) row.append(el('span', 'tag', tag));
+  parts.filter(Boolean).forEach(p => row.append(el('span', '', p)));
+  return row;
 }
 function resultCard(item, index, category) {
   const card = el('article', 'result-card');
   const type = item.drawing_type || item.category || category;
-  if (type) card.append(el('div', 'category-label', type));
   const title = item.title || `Result ${index + 1}`;
   const url = safeUrl(item.href || item.url || '');
   const h = el('h3');
   if (url) { const a=el('a','',title); a.href=url; a.target='_blank'; a.rel='noopener noreferrer'; h.append(a); }
   else h.textContent=title;
-  card.append(h);
-  const meta=[item.authors,item.year,item.source,item.license].filter(Boolean).join(' · ');
-  if(meta) card.append(el('div','result-url',meta));
+  card.append(metaRow(type,[item.authors,item.year,item.source,item.license]),h);
   if(url) card.append(el('div','result-url',url));
   if(category==='Technical drawings' || category==='Technical drawings / engineering reference') {
     const previewUrl=safeUrl(item.image || item.thumbnail || '');
@@ -57,15 +69,19 @@ function resultCard(item, index, category) {
   if(url) {
     const actions=el('div','result-actions');
     addLink(actions,'Open original source',url);
-    const button=el('button','text-button','Extract page text'); button.type='button';
+    const button=el('button','text-button'); button.type='button';
+    const label=el('span','','Extract page text'); button.append(icon('text'),label);
     const output=el('div','extracted'); output.hidden=true;
+    let loaded=false;
     button.addEventListener('click',async()=>{
-      button.disabled=true;
+      if(loaded){ output.hidden=!output.hidden; label.textContent=output.hidden?'Show page text':'Hide page text'; return; }
+      button.disabled=true; label.textContent='Extracting…';
       try{
         const response=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
         const data=await response.json(); output.textContent=data.text||data.error||'No text available.';
-      }catch(e){output.textContent=e.message;}
-      output.hidden=false; button.disabled=false;
+        loaded=!!data.text;
+      }catch(e){output.textContent=`Could not extract this page: ${e.message}`;}
+      output.hidden=false; button.disabled=false; label.textContent=loaded?'Hide page text':'Try extracting again';
     });
     actions.append(button); card.append(actions,output);
   }
@@ -110,11 +126,24 @@ function fillPanel(id,items,kind){
   if(kind==='images'){const grid=el('div','image-grid');items.forEach((it,i)=>grid.append(imageCard(it,i)));panel.append(grid);}
   else items.forEach((it,i)=>panel.append(resultCard(it,i,kind)));
 }
-function setTab(name){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));
-  ['web','research','images','drawings','airfoil','plane'].forEach(k=>{ $(`panel-${k}`).hidden=k!==name;});
+const tabs=[...document.querySelectorAll('.tab')];
+function setTab(name,focus=false){
+  tabs.forEach(t=>{
+    const on=t.dataset.tab===name;
+    t.setAttribute('aria-selected',String(on)); t.tabIndex=on?0:-1;
+    if(on&&focus)t.focus();
+    if(on)t.scrollIntoView({block:'nearest',inline:'nearest'});
+  });
+  tabs.forEach(t=>{ $(`panel-${t.dataset.tab}`).hidden=t.dataset.tab!==name;});
 }
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>setTab(t.dataset.tab)));
+tabs.forEach((t,i)=>{
+  t.addEventListener('click',()=>setTab(t.dataset.tab));
+  t.addEventListener('keydown',e=>{
+    const step={ArrowRight:1,ArrowLeft:-1}[e.key];
+    if(step){e.preventDefault();setTab(tabs[(i+step+tabs.length)%tabs.length].dataset.tab,true);}
+    else if(e.key==='Home'||e.key==='End'){e.preventDefault();setTab(tabs[e.key==='Home'?0:tabs.length-1].dataset.tab,true);}
+  });
+});
 
 let lastQuery='';
 let searchHasAnyResults=false;
@@ -151,7 +180,7 @@ function infoValue(value,unit=''){
 }
 function wikipediaCard(w){
   const card=el('section','plane-info-card wiki-card');
-  card.append(el('div','category-label',`Encyclopedia overview${w.description?' · '+w.description:''}`));
+  card.append(metaRow('Encyclopedia overview',[w.description]));
   const head=el('div','wiki-head');
   const thumb=safeUrl(w.thumbnail||'');
   if(thumb){const img=document.createElement('img');img.className='wiki-thumb';img.src=thumb;img.alt=w.title;img.loading='lazy';img.onerror=()=>img.remove();head.append(img);}
@@ -186,7 +215,7 @@ async function renderPlaneInfo(query){
     const a=result.aircraft;
     if(!a)return;
     const card=el('section','plane-info-card');
-    card.append(el('div','category-label',`${a.manufacturer} · ${a.category}`));
+    card.append(metaRow('Curated record',[a.manufacturer,a.category]));
     card.append(el('h2','',a.name));
     card.append(el('p','result-summary','Curated reference record. Values are approximate and variant-dependent; verify against the manufacturer’s current documentation and applicable type certificate.'));
     const grid=el('div','spec-grid');
@@ -223,7 +252,7 @@ async function renderAirfoil(query){
     const response=await fetch(`/api/airfoil?query=${encodeURIComponent(query)}`);
     const data=await response.json();panel.replaceChildren();
     if(!response.ok||!data.available){panel.append(el('div','dataset-unavailable',data.message||'This aircraft is not available in the dataset.'));return;}
-    const card=el('section','plane-info-card');card.append(el('div','category-label','AIRFOIL REFERENCE'),el('h2','',data.aircraft),el('p','result-summary',data.message));
+    const card=el('section','plane-info-card');card.append(metaRow('Airfoil reference',[]),el('h2','',data.aircraft),el('p','result-summary',data.message));
     if(data.profiles&&data.profiles.length){
       data.profiles.forEach(profile=>{
         const item=el('article','result-card');item.append(el('h3','',profile.name),el('p','result-summary',profile.evidence));
@@ -258,7 +287,8 @@ $('searchForm').addEventListener('submit',async event=>{
     $('webCount').textContent=web.length;$('researchCount').textContent=research.length;$('imageCount').textContent=images.length;$('drawingCount').textContent=drawings.length;
     fillPanel('panel-web',web,'General web');fillPanel('panel-research',research,'Research & reports');fillPanel('panel-images',images,'images');fillPanel('panel-drawings',drawings,'Technical drawings');
     await Promise.all([renderAirfoil(query),renderPlaneInfo(query)]);
-    results.hidden=false;setTab('web');status.replaceChildren();
+    results.classList.remove('is-revealed');results.hidden=false;void results.offsetWidth;results.classList.add('is-revealed');
+    setTab('web');status.replaceChildren();
     if(data.errors&&data.errors.length)status.textContent=`Some search providers timed out or were unavailable (${data.errors.length} notices). Results from the other sources are still shown.`;
     results.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(error){status.className='status error';status.textContent=error.message;}
